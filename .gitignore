@@ -1,0 +1,6 @@
+
+*.bin
+*.img
+/bin
+/docs
+*.bxrc
