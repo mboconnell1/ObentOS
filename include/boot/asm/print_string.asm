@@ -1,7 +1,7 @@
 [bits 16]
 
-%ifndef __PRINT_ASM
-    %define __PRINT_ASM
+%ifndef __PRINT_STRING_ASM
+    %define __PRINT_STRING_ASM
 
 ; Code
 ; ------------------------------------------------------------------------------
