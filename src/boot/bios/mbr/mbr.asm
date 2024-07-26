@@ -14,9 +14,9 @@
 
 ; Include files
 ; ------------------------------------------------------------------------------
-%include "../../../../include/boot/asm/defs.inc"
-%include "../../../../include/boot/asm/print_string.asm"
-%include "../../../../include/boot/asm/read_disk.asm"
+%include "defs.inc"
+%include "print_string.asm"
+%include "read_disk.asm"
 
 ; Code
 ; ------------------------------------------------------------------------------
