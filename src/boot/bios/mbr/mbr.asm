@@ -3,15 +3,6 @@
 
         jmp     _start
 
-; Macros
-; ------------------------------------------------------------------------------
-%macro PRINT_STRING 1
-        push    bx
-        mov     bx, %1
-        call    __print_string
-        pop     bx
-%endmacro
-
 ; Include files
 ; ------------------------------------------------------------------------------
 %include "defs.inc"

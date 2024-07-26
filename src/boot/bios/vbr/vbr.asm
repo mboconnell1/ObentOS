@@ -26,15 +26,6 @@ ExFAT_PercentInUse:                     db 0
 ExFAT_Reserved:                         times 7 db 0
 ExFAT_BootCode:
 
-; Macros
-; ------------------------------------------------------------------------------
-%macro PRINT_STRING 1
-        push    bx
-        mov     bx, %1
-        call    __print_string
-        pop     bx
-%endmacro
-
 ; Includes
 ; ------------------------------------------------------------------------------
 %include "print_string.asm"
@@ -78,7 +69,7 @@ _halt:
 boot_drive:             db 0
 
 msg_reading_ldr:        db "Copying loader... ", 0
-msg_jumping_ldr:        db "Jumping to loader... ", 0
+msg_jumping_ldr:        db "Jumping to loader... ", 13, 10, 10, 0
 msg_success:            db "Success!", 13, 10, 0
 msg_hlt:                db 13, 10, "HALT", 0
 
