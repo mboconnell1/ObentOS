@@ -70,7 +70,7 @@ _start:
         jmp     0x0:0x8000
 
 _halt:
-        PRINT_STRING msg_error
+        PRINT_STRING msg_hlt
         jmp     $
         
 ; Data
@@ -80,7 +80,7 @@ boot_drive:             db 0
 msg_reading_ldr:        db "Copying loader... ", 0
 msg_jumping_ldr:        db "Jumping to loader... ", 0
 msg_success:            db "Success!", 13, 10, 0
-msg_error:            db "Error!", 13, 10, 0
+msg_hlt:                db 13, 10, "HALT", 0
 
         times 510-($-$$) db 0
 
