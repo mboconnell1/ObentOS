@@ -21,45 +21,41 @@
 ;       Success:
 ;           ES:DI       - Copy of CX sectors from EBX.
 ;       Failure:
-;           None.
+;           CF          - Set on error.
+;           AX          - 1 = extensions unsupported,
+;                         2 = disk read error.
 __read_disk:
+    clc
     pusha
-
-    ; Fill DAPS.
+.main:
     mov     word [daps + daps_t.SectorsToTransfer], cx
     mov     word [daps + daps_t.BufferAddrOffset], di
     mov     dword [daps + daps_t.LBAAddrLow], ebx
 
-    ; Check for functionality.
     mov     ah, 0x41
     mov     bx, 0x55AA
     int     0x13
-    jc      __read_disk_err.ext_not_supp
+    jc      .err_ext_not_supp
 
     mov     si, daps
     mov     ah, 0x42
     int     0x13
-    jc      __read_disk_err.disk
-
+    jc      .err_disk_read
+.fin:
     popa
     ret
-
-__read_disk_err:
-.ext_not_supp:
-    mov     bx, msg_err_ext_not_supported
-    call    __print_string
-    jmp     $
-.disk:
-    mov     bx, msg_err_disk
-    call    __print_string
-    jmp     $
+.err_ext_not_supp:
+    mov     ax, 1
+    stc
+    jmp     .fin
+.err_disk_read:
+    mov     ax, 2
+    stc
+    jmp     .fin
 
 
 ; Data
 ; ------------------------------------------------------------------------------
-msg_err_ext_not_supported: db "LBA mode is not supported!", 0
-msg_err_disk: db "Error reading disk!", 0
-
 daps:
         db 0x10
 	    db 0

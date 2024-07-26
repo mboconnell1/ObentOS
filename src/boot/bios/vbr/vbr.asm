@@ -37,8 +37,8 @@ ExFAT_BootCode:
 
 ; Includes
 ; ------------------------------------------------------------------------------
-%include "enable_a20.asm"
 %include "print_string.asm"
+%include "read_disk.asm"
 
 ; Code
 ; ------------------------------------------------------------------------------
@@ -57,13 +57,19 @@ _start:
 
         sti
 
-        PRINT_STRING msg_enabling_a20
-        call    __enable_a20
-        jc      _failed
-        PRINT_STRING msg_success
-        jmp $
+        mov     ebx, dword 0x00000002
+        mov     di, 0x8000
+        mov     cx, 1
 
-_failed:
+        PRINT_STRING msg_reading_ldr
+        call    __read_disk
+        jc      _halt
+        PRINT_STRING msg_success
+
+        PRINT_STRING msg_jumping_ldr
+        jmp     0x0:0x8000
+
+_halt:
         PRINT_STRING msg_error
         jmp     $
         
@@ -71,7 +77,8 @@ _failed:
 ; ------------------------------------------------------------------------------
 boot_drive:             db 0
 
-msg_enabling_a20:       db "Enabling A20 line... ", 0
+msg_reading_ldr:        db "Copying loader... ", 0
+msg_jumping_ldr:        db "Jumping to loader... ", 0
 msg_success:            db "Success!", 13, 10, 0
 msg_error:            db "Error!", 13, 10, 0
 
