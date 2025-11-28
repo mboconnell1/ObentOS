@@ -35,6 +35,8 @@ __get_a20_state:
 
         mov     byte [es:di], 0x00
         mov     byte [ds:si], 0xFF
+        mov     al, [es:di]
+        cmp     al, [ds:si]
 
         pop     ax
         mov     byte [ds:si], al
@@ -183,7 +185,7 @@ __query_a20_support:
 
         mov     ax, bx
         jmp     .fin
-.err
+.err:
         stc
 .fin:
         pop     bx
