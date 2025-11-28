@@ -3,15 +3,18 @@
 %ifndef __ENABLE_A20_ASM
     %define __ENABLE_A20_ASM
 
+global a20_enable
+global a20_get_state
+
 ; Code
 ; ------------------------------------------------------------------------------
-; __get_a20_state
+; a20_get_state
 ; Checks the status of the A20 line.
 ; Input(s):
 ;       None.
 ; Output(s):
 ;       AX              - Disabled = 0, enabled = 1.
-__get_a20_state:
+a20_get_state:
         pushf
         push    ds
         push    es
@@ -43,8 +46,10 @@ __get_a20_state:
         pop     ax
         mov     byte [es:di], al
 
-        mov     ax, 0
-        je      .fin
+        xor     ax, ax
+        jne     .enabled
+        jmp     .fin
+.enabled:
         mov     ax, 1
 .fin:
         pop     di
@@ -55,45 +60,50 @@ __get_a20_state:
 
         ret
 
-; __enable_a20
+; a20_enable
 ; Enable the A20 line via multiple methods in order of least "risk".
 ; Input(s):
 ;       None.
 ; Output(s):
 ;       CF              - Set on error.
-__enable_a20:
+a20_enable:
         clc
         pusha
-.main:
-        mov     bh, 0
+        mov     bl, 3
 
-        call    __get_a20_state
+        call    a20_get_state
         test    ax, ax
         jnz     .fin
-        jmp     .set_bios
-.err_set_bios:
-        call    __query_a20_support
+        jmp     .try_bios
+.bios_failed:
+        call    __a20_query_bios_support
+        jc      .bios_support_default
         mov     bl, al
+        jmp     .bios_support_mask
+.bios_support_default:
+        mov     bl, 3
+.bios_support_mask:
         test    bl, 1
-        jnz     .set_keyboard_controller
-.err_set_keyboard_controller:
+        jnz     .try_kbc
+.kbc_failed:
         test    bl, 2
         jnz     .set_fast_gate
-.set_bios:
+        jmp     .err
+.try_bios:
         mov     ax, 0x2401
         int     0x15
-        jc      .set_keyboard_controller
+        jc      .try_kbc
 
-        call    __get_a20_state
+        call    a20_get_state
         test    ax, ax
         jnz     .fin
-        jmp     .err_set_bios
-.set_keyboard_controller:
-        call    __enable_a20_keyboard_controller
-        call    __get_a20_state
+        jmp     .bios_failed
+.try_kbc:
+        call    __a20_enable_via_kbc
+        call    a20_get_state
         test    ax, ax
         jnz     .fin
-        jmp     .err_set_keyboard_controller
+        jmp     .kbc_failed
 .set_fast_gate:
         in      al, 0x92
         test    al, 2
@@ -103,7 +113,7 @@ __enable_a20:
         and     al, 0xFE
         out     0x92, al
 
-        call    __get_a20_state
+        call    a20_get_state
         test    ax, ax
         jnz     .fin
         jmp     .err
@@ -113,58 +123,58 @@ __enable_a20:
         popa
         ret
 
-; __enable_a20_keyboard_controller
+; __a20_enable_via_kbc
 ; Enable the A20 line via the keyboard controller.
 ; Input(s):
 ;       None.
 ; Output(s):
 ;       None.
-__enable_a20_keyboard_controller:
+__a20_enable_via_kbc:
+        pushf
         cli
 .main:
-        call    .wait_io1
+        call    .wait_input_empty
         mov     al, 0xAD
         out     0x64, al
 
-
-        call    .wait_io1
+        call    .wait_input_empty
         mov     al, 0xD0
         out     0x64, al
 
-        call    .wait_io2
+        call    .wait_output_full
         in      al, 0x60
-        push    eax
+        push    ax
 
-        call    .wait_io1
+        call    .wait_input_empty
         mov     al, 0xD1
         out     0x64, al
 
-        call    .wait_io1
-        pop     eax
+        call    .wait_input_empty
+        pop     ax
         or      al, 2
         out     0x60, al
 
-        call    .wait_io1
+        call    .wait_input_empty
         mov     al, 0xAE
         out     0x64, al
 
-        call    .wait_io1
+        call    .wait_input_empty
         jmp     .fin
-.wait_io1:
+.wait_input_empty:
         in      al, 0x64
         test    al, 2
-        jnz     .wait_io1
+        jnz     .wait_input_empty
         ret
-.wait_io2:
+.wait_output_full:
         in      al, 0x64
         test    al, 1
-        jz     .wait_io2
+        jz     .wait_output_full
         ret
 .fin:
-        sti
+        popf
         ret
 
-; __query_a20_support
+; __a20_query_bios_support
 ; Query BIOS for A20 support.
 ; Input(s):
 ;       None.
@@ -172,7 +182,7 @@ __enable_a20_keyboard_controller:
 ;       AX              - Bit #0 = supported on keyboard controller,
 ;                         bit #1 = supported with 0x92.
 ;       CF              - Set on error.
-__query_a20_support:
+__a20_query_bios_support:
         clc
         push    bx
 .main:
@@ -186,11 +196,10 @@ __query_a20_support:
         mov     ax, bx
         jmp     .fin
 .err:
+        xor     ax, ax
         stc
 .fin:
         pop     bx
         ret
-
-msg_break:           db "Break!", 13, 10, 0
 
 %endif

@@ -22,7 +22,7 @@ _start:
         sti
 
         PRINT_STRING msg_enabling_a20
-        call    __enable_a20
+        call    a20_enable
         jc      _halt
         PRINT_STRING msg_success
 
