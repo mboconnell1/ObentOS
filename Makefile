@@ -20,9 +20,9 @@ build_bootloader:
 	make build_img
 
 build_img:
-	dd if=$(BUILD_DIR)/mbr.bin of=$(BUILD_DIR)/$(OS_NAME).img bs=512 seek=0 count=1
-	dd if=$(BUILD_DIR)/vbr.bin of=$(BUILD_DIR)/$(OS_NAME).img bs=512 seek=1 count=1
-	dd if=$(BUILD_DIR)/loader.bin of=$(BUILD_DIR)/$(OS_NAME).img bs=512 seek=2 count=1
+	dd if=$(BUILD_DIR)/mbr.bin of=$(BUILD_DIR)/$(OS_NAME).img bs=512 seek=0 count=1 conv=notrunc
+	dd if=$(BUILD_DIR)/vbr.bin of=$(BUILD_DIR)/$(OS_NAME).img bs=512 seek=1 count=1 conv=notrunc
+	dd if=$(BUILD_DIR)/loader.bin of=$(BUILD_DIR)/$(OS_NAME).img bs=512 seek=2 count=1 conv=notrunc
 
 clean:
 	rm -rf $(BUILD_DIR)
