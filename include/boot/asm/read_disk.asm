@@ -29,7 +29,9 @@ __read_disk:
 .main:
     mov     word [daps + daps_t.SectorsToTransfer], cx
     mov     word [daps + daps_t.BufferAddrOffset], di
+    mov     word [daps + daps_t.BufferAddrSegment], es
     mov     dword [daps + daps_t.LBAAddrLow], ebx
+    mov     dword [daps + daps_t.LBAAddrHigh], 0
 
     mov     ah, 0x41
     mov     bx, 0x55AA
