@@ -85,8 +85,8 @@ _halt:
 boot_drive:             db 0
 partition_offset:       dw 0
 
-msg_reading_vbr:        db "Copying VBR... ", 0
-msg_jumping_vbr:        db "Jumping to VBR... ", 13, 10, 10, 0
+msg_reading_vbr:        db "[MBR] Loading VBR... ", 0
+msg_jumping_vbr:        db "[MBR] Jumping to VBR... ", 13, 10, 10, 0
 msg_no_active:          db "Couldn't find active partition!", 0
 msg_not_bootable:       db "Active partition not bootable!", 0
 msg_success:            db "Success!", 13, 10, 0

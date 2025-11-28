@@ -1,11 +1,10 @@
 [bits 16]
-[org 0x8000]
+[org 0]
 
         jmp     _start
 
 ; Includes
 ; ------------------------------------------------------------------------------
-%include "enable_a20.asm"
 %include "print_string.asm"
 
 ; Code
@@ -13,26 +12,24 @@
 _start:
         cli
         
-        xor     ax, ax
+        mov     ax, cs
         mov     ds, ax
         mov     es, ax
         mov     ss, ax
-        mov     sp, ax
+        mov     sp, 0xFFFE
+        mov     bp, sp
+
+        mov     [boot_drive], dl
 
         sti
 
-        PRINT_STRING msg_enabling_a20
-        call    a20_enable
-        jc      _halt
-        PRINT_STRING msg_success
+        jmp $
 
-        jmp     $
 _halt:
         PRINT_STRING msg_hlt
         jmp     $
 
 ; Data
 ; ------------------------------------------------------------------------------
-msg_enabling_a20:       db "Enabling A20 line... ", 0
 msg_success:            db "Success!", 13, 10, 0
 msg_hlt:                db 13, 10, "HALT", 0
