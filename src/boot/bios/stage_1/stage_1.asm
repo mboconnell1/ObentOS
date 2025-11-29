@@ -10,13 +10,14 @@
 %include "print_string.asm"
 %include "read_disk.asm"
 
-; Config
-; ------------------------------------------------------------------------------
-%define STAGE1_REL_LBA  1
-%define STAGE1_SECTORS  2
-
-%define STAGE2_REL_LBA  (STAGE1_REL_LBA + STAGE1_SECTORS)
-%define STAGE2_SECTORS  1
+%ifdef NO_LAYOUT
+    ; Pre-build: dummy values, not used for actual boot
+    %define STAGE2_REL_LBA  0
+    %define STAGE2_SECTORS  1
+%else
+    ; Final build: real values from generator
+    %include "boot_layout.inc"
+%endif
 
 ; Code
 ; ------------------------------------------------------------------------------

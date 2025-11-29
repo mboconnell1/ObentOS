@@ -11,8 +11,7 @@
 
 ; Config
 ; ------------------------------------------------------------------------------
-%define STAGE1_REL_LBA  1       ; from partition start
-%define STAGE1_SECTORS  2       ; stage 1 size in sectors
+%include "boot_layout.inc"
 
 ; Code
 ; ------------------------------------------------------------------------------
