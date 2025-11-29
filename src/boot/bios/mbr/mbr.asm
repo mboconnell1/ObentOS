@@ -34,25 +34,49 @@ _jump:
         sti
         mov     bp, sp
 
-        mov     byte [boot_drive], dl   ; BIOS sets DL to "drive number".
+        ; Initialise BOOT_INFO at 0000:7E00
+        mov     ax, BOOT_INFO_SEG
+        mov     es, ax
+        mov     cx, boot_info_t_size
+        xor     al, al
+        rep     stosb
+
+        ; BOOT_INFO.Signature = 'BI'
+        mov     ax, 'BI'
+        mov     [es:BOOT_INFO_OFF + boot_info_t.Signature], ax
+
+        ; BOOT_INFO.Version = 1
+        mov     byte [es:BOOT_INFO_OFF + boot_info_t.Version], 1
+
+        ; BOOT_INFO.BootDrive = DL
+        mov     [es:BOOT_INFO_OFF + boot_info_t.BootDrive], dl
 
         ; Check partition table for a bootable partition.
         lea     bx, [0x0600 + mbr_t.PartitionEntry1]
         mov     cx, 4
 .loop:
         mov     al, byte [bx]
-        test    al, 0x80                ; Check if marked as active.
+        test    al, 0x80                ; active flag?
         jnz     .found          
         add     bx, partition_table_entry_t_size
         dec     cx
         jnz     .loop
+
         jmp     .err_no_active_partition
 .found:
-        mov     word [partition_offset], bx
+        ; BX points to active partition entry
+        ; SI points to LBAStartAddress within that entry
+        mov     si, bx
+        add     si, partition_table_entry_t.LBAStartAddress
 
-        ; Read VBR into 0x7C00.
-        add     bx, 8                   ; Move to LBA address.
-        mov     ebx, dword [bx]
+        ; Store LBAStartAddess as PartitionLBAAbs in BOOT_INFO
+        mov     eax, [si]
+        mov     [es:BOOT_INFO_OFF + boot_info_t.PartitionLBAAbs], eax
+
+        ; Read VBR into 0000:7C000
+        mov     ebx, eax
+        xor     ax, ax
+        mov     es, ax
         mov     di, 0x7C00
         mov     cx, 1
 
@@ -64,14 +88,14 @@ _jump:
         ; Verify boot signature and jump to VBR.
         cmp     word [0x7DFE], 0xAA55
         jne     .err_partition_not_bootable
-        mov     si, word [partition_offset]
-        mov     dl, byte [boot_drive]
 
         PRINT_STRING msg_jumping_vbr
         jmp     0x0:0x7C00
+
 .err_no_active_partition:
         PRINT_STRING msg_no_active
         jmp     _halt
+        
 .err_partition_not_bootable:
         PRINT_STRING msg_not_bootable
         jmp     _halt
@@ -82,9 +106,6 @@ _halt:
 
 ; Data
 ; ------------------------------------------------------------------------------
-boot_drive:             db 0
-partition_offset:       dw 0
-
 msg_reading_vbr:        db "[MBR] Loading VBR... ", 0
 msg_jumping_vbr:        db "[MBR] Jumping to VBR... ", 13, 10, 10, 0
 msg_no_active:          db "Couldn't find active partition!", 0

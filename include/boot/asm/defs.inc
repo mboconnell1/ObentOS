@@ -28,10 +28,29 @@
     ; Fixed memory locations
     ; --------------------------------------------------------------------------
     ; Segmented memory locations      |SEG:OFF|
-        SEG_MEM_LOC     LOADER,     0x0000_8000
-    
+        SEG_MEM_LOC     BOOT_INFO,  0x0000_7E00
+
     ; Structures
-    ; --------------------------------------------------------------------------
+    ; ---------------------------------------s-----------------------------------
+    struc boot_info_t
+        .Signature          : resw 1    ; 'BI'
+        .Version            : resb 1    ; structure version
+        .Flags              : resb 1    ; bitfield
+
+        .BootDrive          : resb 1    ; BIOS drive number (DL)
+        .Reserved0          : resb 1    ; reserved / alignment
+
+        .PartitionLBAAbs    : resd 1    ; absolute LBA of partition start
+
+        .LoaderRelLBA       : resd 1    ; LBA relative to partition start
+        .LoaderSectors      : resw 1    ; loader size in sectors
+        .LoaderSegment      : resw 1    ; segment where loader is loaded
+        .LoaderOffset       : resw 1    ; offset where loader is loaded
+
+        .ReservedFlags      : resw 1    ; reserved / alignment
+        .ReservedArea       : resb 32   ; room for future fields
+    endstruc
+
     struc daps_t
         .PacketSize         : resb 1
         .Reserved           : resb 1

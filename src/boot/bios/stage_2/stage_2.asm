@@ -5,6 +5,7 @@
 
 ; Includes
 ; ------------------------------------------------------------------------------
+%include "defs.inc"
 %include "print_string.asm"
 
 ; Code
@@ -18,8 +19,6 @@ _start:
         mov     ss, ax
         mov     sp, 0xFFFE
         mov     bp, sp
-
-        mov     [boot_drive], dl
 
         sti
 

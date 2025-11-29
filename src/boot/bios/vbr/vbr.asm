@@ -5,8 +5,14 @@
 
 ; Includes
 ; ------------------------------------------------------------------------------
+%include "defs.inc"
 %include "print_string.asm"
 %include "read_disk.asm"
+
+; Config
+; ------------------------------------------------------------------------------
+%define STAGE1_REL_LBA  1       ; from partition start
+%define STAGE1_SECTORS  2       ; stage 1 size in sectors
 
 ; Code
 ; ------------------------------------------------------------------------------
@@ -17,23 +23,34 @@ _start:
         mov     ds, ax
         mov     es, ax
         mov     ss, ax
-        mov     sp, 0x7C00
-        mov     bp, sp
+        mov     sp, 0x7000
 
-        mov     [boot_drive], dl
-
+        cld
         sti
+        
+        ; BOOT_INFO in FS:SI
+        mov     ax, BOOT_INFO_SEG
+        mov     fs, ax
+        mov     si, BOOT_INFO_OFF
 
-        mov     ebx, [stage_1_lba]
-        mov     di, 0x8000
-        mov     cx, 2
+        ; Load boot drive from BOOT_INFO
+        mov     dl, [fs:si + boot_info_t.BootDrive]
 
+        ; Compute absolute LBA for stage 1
+        mov     eax, [fs:si + boot_info_t.PartitionLBAAbs]
+        add     eax, STAGE1_REL_LBA
+        mov     ebx, eax
+
+        ; Load stage 1 into 0000:8000
         PRINT_STRING msg_loading_stage_1
+        mov     di, 0x8000
+        mov     cx, STAGE1_SECTORS
+
         call    __read_disk
         jc      _halt
         PRINT_STRING msg_success
 
-        mov     dl, [boot_drive]
+        ; Jump to stage 1
         PRINT_STRING msg_jumping_stage_1
         jmp     0x0:0x8000
 
@@ -43,9 +60,6 @@ _halt:
         
 ; Data
 ; ------------------------------------------------------------------------------
-boot_drive:             db 0
-stage_1_lba:            dd 2
-
 msg_loading_stage_1:    db "[VBR] Loading stage 1... ", 0
 msg_jumping_stage_1:    db "[VBR] Jumping to stage 1... ", 13, 10, 10, 0
 msg_success:            db "Success!", 13, 10, 0
