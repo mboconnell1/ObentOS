@@ -102,12 +102,6 @@ $(ROOTFS_STAGE2): $(STAGE2_BIN) | dirs
 
 # ------------------------------------------------------------
 # FAT12 volume image
-#
-# 1) mkfs.fat with RsvdSecCnt = 1 + STAGE1_SECTORS
-# 2) Overwrite:
-#       volume LBA0          with vbr.bin
-#       volume LBA1..        with stage_1.bin
-# 3) Use mtools to copy rootfs/ into the FAT filesystem.
 # ------------------------------------------------------------
 
 $(VOLUME_IMG): $(VBR_BIN) $(STAGE1_BIN) $(ROOTFS_STAGE2) $(BOOT_LAYOUT_INC)
@@ -148,4 +142,4 @@ clean:
 	rm -f $(BOOT_LAYOUT_INC)
 
 run: $(DISK_IMG)
-	qemu-system-i386 -drive file=$(DISK_IMG),format=raw,if=ide
+	qemu-system-x86_64 -hda $(DISK_IMG)
