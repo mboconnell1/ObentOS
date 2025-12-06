@@ -22,15 +22,15 @@ _start:
 
         sti
 
-        PRINT_STRING msg_success
+        PRINT_STRING MSG_SUCCESS
 
         jmp $
 
 _halt:
-        PRINT_STRING msg_hlt
+        PRINT_STRING MSG_HLT
         jmp     $
 
 ; Data
 ; ------------------------------------------------------------------------------
-msg_success:            db "Success!", 13, 10, 0
-msg_hlt:                db 13, 10, "HALT", 0
+MSG_SUCCESS:            db "Success!", 13, 10, 0
+MSG_HLT:                db 13, 10, "HALT", 0

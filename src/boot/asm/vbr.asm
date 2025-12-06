@@ -20,7 +20,7 @@ BPB_SecPerClus:   db 1              ; sectors per cluster
 BPB_RsvdSecCnt:   dw 1 + STAGE1_SECTORS
 BPB_NumFATs:      db 1              ; 1 FAT
 BPB_RootEntCnt:   dw 64             ; root dir entries
-BPB_TotSec16:     dw 333            ; matches partition size
+BPB_TotSec16:     dw 333           ; matches partition size
 BPB_Media:        db 0xF8           ; media descriptor
 BPB_FATSz16:      dw 1              ; sectors per FAT
 BPB_SecPerTrk:    dw 1              ; CHS junk (placeholder)

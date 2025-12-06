@@ -1,100 +1,149 @@
-OS_NAME = ObentOS
+# ============================================================
+#  ObentOS - Top-level Makefile
+#  Layout:
+#    Disk:
+#      LBA0              : MBR (mbr.bin)
+#      LBA1..            : FAT12 volume (volume.img)
+#
+#    Volume (relative to partition start):
+#      LBA0              : VBR (vbr.bin)
+#      LBA1..N           : Stage 1 loader (stage_1.bin) in reserved sectors
+#      LBA(1+N)..        : FAT / root / data
+#
+#  gen_boot_layout.sh computes:
+#      STAGE1_REL_LBA    = 1
+#      STAGE1_SECTORS    = ceil(|stage_1.bin| / 512)
+# ============================================================
 
-BOOTLOADER_DIR = src/boot
-BUILD_DIR = bin
+OS_NAME        := ObentOS
 
-MBR_DIR = $(BOOTLOADER_DIR)/bios/mbr
-VBR_DIR = $(BOOTLOADER_DIR)/bios/vbr
-STAGE_1_DIR = $(BOOTLOADER_DIR)/bios/stage_1
-STAGE_2_DIR = $(BOOTLOADER_DIR)/bios/stage_2
+# Directories
+BUILD_DIR      := bin
+ROOTFS_DIR     := rootfs
 
-BOOT_LAYOUT_INC = include/boot/asm/boot_layout.inc
+# Tools
+ASM            := nasm
+ASM_INC        := include/boot/asm
+ASM_FLAGS      := -f bin -I $(ASM_INC)
 
-MBR_BIN = $(BUILD_DIR)/mbr.bin
-VBR_BIN = $(BUILD_DIR)/vbr.bin
-STAGE1_BIN = $(BUILD_DIR)/stage_1.bin
-STAGE2_BIN = $(BUILD_DIR)/stage_2.bin
+GEN_BOOT_LAYOUT := tools/gen_boot_layout.sh
 
-PART_SECTORS = 333
-VOL_IMG      = $(BUILD_DIR)/volume.img
+# FAT12 / volume config
+FAT_SECTORS    := 333
 
-GEN_LAYOUT = tools/gen_boot_layout.sh
+# Sources (adjust paths if needed)
+MBR_SRC        := src/boot/asm/mbr.asm
+VBR_SRC        := src/boot/asm/vbr.asm
+STAGE1_SRC     := src/boot/asm/stage_1.asm
+STAGE2_SRC     := src/boot/asm/stage_2.asm
 
-.PHONY: all clean init build_bootloader build_img layout
+# Built artefacts
+MBR_BIN        := $(BUILD_DIR)/boot/mbr.bin
+VBR_BIN        := $(BUILD_DIR)/boot/vbr.bin
+STAGE1_BIN     := $(BUILD_DIR)/boot/stage_1.bin
+STAGE2_BIN     := $(BUILD_DIR)/boot/stage_2.bin
 
-init:
-	make clean
+VOLUME_IMG     := $(BUILD_DIR)/volume.img
+DISK_IMG       := $(BUILD_DIR)/$(OS_NAME).img
 
-all:
-	make build_bootloader
+# Auto-generated include for VBR (contains STAGE1_REL_LBA / STAGE1_SECTORS)
+BOOT_LAYOUT_INC := $(ASM_INC)/boot_layout.inc
 
-# ------------------------------------------------------------------------------
-# Main bootloader build
-# ------------------------------------------------------------------------------
-build_bootloader: $(BOOT_LAYOUT_INC)
-	make -C $(MBR_DIR) mbr
-	make -C $(VBR_DIR) vbr
-	make -C $(STAGE_1_DIR) stage_1
-	make -C $(STAGE_2_DIR) stage_2
-	make build_img
+# File inside at the root of the FAT volume, where the MBR expects to find it
+ROOTFS_STAGE2 := $(ROOTFS_DIR)/STAGE2.BIN
 
-# ------------------------------------------------------------------------------
-# Automatically generate boot_layout.inc based on stage sizes
-# ------------------------------------------------------------------------------
+# Parse STAGE1_SECTORS from the generated boot_layout.inc
+STAGE1_SECTORS = $(shell awk '/STAGE1_SECTORS/ {print $$3}' $(BOOT_LAYOUT_INC) 2>/dev/null)
+
+# ------------------------------------------------------------
+# Phony targets
+# ------------------------------------------------------------
+
+.PHONY: all clean run dirs images boot volume
+
+# Default: build final disk image
+all: $(DISK_IMG)
+
+images: $(VOLUME_IMG) $(DISK_IMG)
+boot:   $(MBR_BIN) $(VBR_BIN) $(STAGE1_BIN) $(STAGE2_BIN)
+volume: $(VOLUME_IMG)
+
+dirs:
+	mkdir -p $(BUILD_DIR)/boot
+
+# ------------------------------------------------------------
+# Assembly
+# ------------------------------------------------------------
+
+$(MBR_BIN): $(MBR_SRC) | dirs
+	$(ASM) $(ASM_FLAGS) -o $@ $<
+
+$(STAGE1_BIN): $(STAGE1_SRC) | dirs
+	$(ASM) $(ASM_FLAGS) -o $@ $<
+
+# boot_layout.inc depends on stage_1.bin
 $(BOOT_LAYOUT_INC): $(STAGE1_BIN)
-	@echo "[BUILD] Generating boot_layout.inc"
-	$(GEN_LAYOUT) $(STAGE1_BIN) > $(BOOT_LAYOUT_INC)
+	$(GEN_BOOT_LAYOUT) $< > $@
 
-$(STAGE1_BIN):
-	$(MAKE) -C $(STAGE_1_DIR) stage_1
+# VBR needs boot_layout.inc so it sees STAGE1_REL_LBA / STAGE1_SECTORS
+$(VBR_BIN): $(VBR_SRC) $(BOOT_LAYOUT_INC) | dirs
+	$(ASM) $(ASM_FLAGS) -o $@ $<
 
-$(STAGE2_BIN):
-	$(MAKE) -C $(STAGE_2_DIR) stage_2
+$(STAGE2_BIN): $(STAGE2_SRC) | dirs
+	$(ASM) $(ASM_FLAGS) -o $@ $<
 
-PART_SECTORS = 333
-VOL_IMG      = $(BUILD_DIR)/volume.img
+# ------------------------------------------------------------
+# RootFS population (what goes inside the FAT volume)
+# ------------------------------------------------------------
 
-build_volume: $(VBR_BIN) $(STAGE1_BIN) $(STAGE2_BIN) $(BOOT_LAYOUT_INC)
-	@echo "[BUILD] Creating FAT12 volume image"
+$(ROOTFS_STAGE2): $(STAGE2_BIN) | dirs
+	cp $< $@
 
-	@STAGE1_SECTORS=$$(sed -n 's/^STAGE1_SECTORS *equ *\([0-9]\+\)/\1/p' $(BOOT_LAYOUT_INC)); \
-	RSVD_SEC_CNT=$$((1 + $$STAGE1_SECTORS)); \
-	echo "  STAGE1_SECTORS = $$STAGE1_SECTORS"; \
-	echo "  RSVD_SEC_CNT   = $$RSVD_SEC_CNT"; \
-	\
-	truncate -s $$(( $(PART_SECTORS) * 512 )) $(VOL_IMG); \
-	\
-	mkfs.fat -F 12 \
-	         -S 512 \
-	         -s 1 \
-	         -r 64 \
-	         -R $$RSVD_SEC_CNT \
-			 -f 1 \
-	         -n OBENTOS \
-	         $(VOL_IMG); \
-	\
-	mcopy -i $(VOL_IMG) $(STAGE2_BIN) ::STAGE2.BIN; \
-	\
-	dd if=$(VBR_BIN) of=$(VOL_IMG) bs=512 seek=0 count=1 conv=notrunc; \
-	dd if=$(STAGE1_BIN) of=$(VOL_IMG) bs=512 seek=1 \
-	   count=$$STAGE1_SECTORS conv=notrunc
+# ------------------------------------------------------------
+# FAT12 volume image
+#
+# 1) mkfs.fat with RsvdSecCnt = 1 + STAGE1_SECTORS
+# 2) Overwrite:
+#       volume LBA0          with vbr.bin
+#       volume LBA1..        with stage_1.bin
+# 3) Use mtools to copy rootfs/ into the FAT filesystem.
+# ------------------------------------------------------------
 
-build_img: $(MBR_BIN) build_volume
-	@echo "[BUILD] Creating boot image: $(OS_NAME).img"
+$(VOLUME_IMG): $(VBR_BIN) $(STAGE1_BIN) $(ROOTFS_STAGE2) $(BOOT_LAYOUT_INC)
+	@if [ -z "$(STAGE1_SECTORS)" ]; then \
+		echo "ERROR: boot_layout.inc missing STAGE1_SECTORS"; exit 1; fi
+	rm -f $@
 
-	truncate -s $$(( (1 + $(PART_SECTORS)) * 512 )) $(BUILD_DIR)/$(OS_NAME).img
+	truncate -s $$(( $(FAT_SECTORS) * 512 )) $@
 
-	dd if=$(MBR_BIN) of=$(BUILD_DIR)/$(OS_NAME).img \
-	   bs=512 seek=0 count=1 conv=notrunc
+	mkfs.fat -F 12 -S 512 -s 1 -r 64 -R $$((1 + $(STAGE1_SECTORS))) -f 1 -n $(OS_NAME) $@
 
-	dd if=$(VOL_IMG) of=$(BUILD_DIR)/$(OS_NAME).img \
-	   bs=512 seek=1 conv=notrunc
+	mcopy -i $@ -s $(ROOTFS_DIR)/* ::/
+
+	dd if=$(VBR_BIN)    of=$@ bs=512 seek=0 count=1 conv=notrunc
+	dd if=$(STAGE1_BIN) of=$@ bs=512 seek=1 count=$(STAGE1_SECTORS) conv=notrunc
+
+
+# ------------------------------------------------------------
+# Final disk image layout
+#
+#   Disk LBA 0 : MBR (partition with LBAStart = 1)
+#   Disk LBA 1 : volume LBA 0 (VBR)
+#   Disk LBA 2+: rest of volume (stage1, FAT, root, data)
+# ------------------------------------------------------------
+
+$(DISK_IMG): $(MBR_BIN) $(VOLUME_IMG)
+	rm -f $@
+	dd if=$(MBR_BIN)   of=$@ bs=512 seek=0 count=1 conv=notrunc
+	dd if=$(VOLUME_IMG) of=$@ bs=512 seek=1 conv=notrunc
+
+# ------------------------------------------------------------
+# Utilities
+# ------------------------------------------------------------
 
 clean:
 	rm -rf $(BUILD_DIR)
-	mkdir $(BUILD_DIR)
 	rm -f $(BOOT_LAYOUT_INC)
-	make -C $(MBR_DIR) clean
-	make -C $(VBR_DIR) clean
-	make -C $(STAGE_1_DIR) clean
-	make -C $(STAGE_2_DIR) clean
+
+run: $(DISK_IMG)
+	qemu-system-i386 -drive file=$(DISK_IMG),format=raw,if=ide
