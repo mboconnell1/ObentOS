@@ -14,7 +14,9 @@ MBR_BIN = $(BUILD_DIR)/mbr.bin
 VBR_BIN = $(BUILD_DIR)/vbr.bin
 STAGE1_BIN = $(BUILD_DIR)/stage_1.bin
 STAGE2_BIN = $(BUILD_DIR)/stage_2.bin
-STAGE1_PRE_BIN = $(BUILD_DIR)/stage_1.pre.bin
+
+PART_SECTORS = 333
+VOL_IMG      = $(BUILD_DIR)/volume.img
 
 GEN_LAYOUT = tools/gen_boot_layout.sh
 
@@ -39,35 +41,54 @@ build_bootloader: $(BOOT_LAYOUT_INC)
 # ------------------------------------------------------------------------------
 # Automatically generate boot_layout.inc based on stage sizes
 # ------------------------------------------------------------------------------
-$(BOOT_LAYOUT_INC): $(STAGE1_PRE_BIN) $(STAGE2_BIN)
+$(BOOT_LAYOUT_INC): $(STAGE1_BIN)
 	@echo "[BUILD] Generating boot_layout.inc"
-	$(GEN_LAYOUT) $(STAGE1_PRE_BIN) $(STAGE2_BIN) > $(BOOT_LAYOUT_INC)
+	$(GEN_LAYOUT) $(STAGE1_BIN) > $(BOOT_LAYOUT_INC)
 
-# Pre-build stage 1 (NO_LAYOUT)
-$(STAGE1_PRE_BIN):
-	make -C $(STAGE_1_DIR) pre
+$(STAGE1_BIN):
+	$(MAKE) -C $(STAGE_1_DIR) stage_1
 
-# Stage 2 (just build normally)
 $(STAGE2_BIN):
-	make -C $(STAGE_2_DIR) stage_2
+	$(MAKE) -C $(STAGE_2_DIR) stage_2
 
-# --------------------------------------------------------------------
-# Build the final bootable image AFTER layout generation
-# --------------------------------------------------------------------
-build_img:
+PART_SECTORS = 333
+VOL_IMG      = $(BUILD_DIR)/volume.img
+
+build_volume: $(VBR_BIN) $(STAGE1_BIN) $(STAGE2_BIN) $(BOOT_LAYOUT_INC)
+	@echo "[BUILD] Creating FAT12 volume image"
+
+	@STAGE1_SECTORS=$$(sed -n 's/^STAGE1_SECTORS *equ *\([0-9]\+\)/\1/p' $(BOOT_LAYOUT_INC)); \
+	RSVD_SEC_CNT=$$((1 + $$STAGE1_SECTORS)); \
+	echo "  STAGE1_SECTORS = $$STAGE1_SECTORS"; \
+	echo "  RSVD_SEC_CNT   = $$RSVD_SEC_CNT"; \
+	\
+	truncate -s $$(( $(PART_SECTORS) * 512 )) $(VOL_IMG); \
+	\
+	mkfs.fat -F 12 \
+	         -S 512 \
+	         -s 1 \
+	         -r 64 \
+	         -R $$RSVD_SEC_CNT \
+			 -f 1 \
+	         -n OBENTOS \
+	         $(VOL_IMG); \
+	\
+	mcopy -i $(VOL_IMG) $(STAGE2_BIN) ::STAGE2.BIN; \
+	\
+	dd if=$(VBR_BIN) of=$(VOL_IMG) bs=512 seek=0 count=1 conv=notrunc; \
+	dd if=$(STAGE1_BIN) of=$(VOL_IMG) bs=512 seek=1 \
+	   count=$$STAGE1_SECTORS conv=notrunc
+
+build_img: $(MBR_BIN) build_volume
 	@echo "[BUILD] Creating boot image: $(OS_NAME).img"
-	dd if=$(MBR_BIN) of=$(BUILD_DIR)/$(OS_NAME).img bs=512 seek=0 count=1 conv=notrunc
-	dd if=$(VBR_BIN) of=$(BUILD_DIR)/$(OS_NAME).img bs=512 seek=1 count=1 conv=notrunc
 
-	# Stage 1 starts at LBA 1 + 1 = 2 (correct)
-	dd if=$(STAGE1_BIN) of=$(BUILD_DIR)/$(OS_NAME).img bs=512 seek=2 count=$(shell wc -c < $(STAGE1_BIN) | awk '{print int(($$1+511)/512)}') conv=notrunc
+	truncate -s $$(( (1 + $(PART_SECTORS)) * 512 )) $(BUILD_DIR)/$(OS_NAME).img
 
-	# Stage 2 begins right after Stage 1, layout dynamically computed
-	STAGE1_SECTORS=$$(sed -n 's/STAGE1_SECTORS *equ *\([0-9]\+\)/\1/p' $(BOOT_LAYOUT_INC)); \
-	STAGE2_SECTORS=$$(sed -n 's/STAGE2_SECTORS *equ *\([0-9]\+\)/\1/p' $(BOOT_LAYOUT_INC)); \
-	STAGE2_LBA=$$(( 2 + $$STAGE1_SECTORS )); \
-	dd if=$(STAGE2_BIN) of=$(BUILD_DIR)/$(OS_NAME).img bs=512 seek=$$STAGE2_LBA count=$$STAGE2_SECTORS conv=notrunc
+	dd if=$(MBR_BIN) of=$(BUILD_DIR)/$(OS_NAME).img \
+	   bs=512 seek=0 count=1 conv=notrunc
 
+	dd if=$(VOL_IMG) of=$(BUILD_DIR)/$(OS_NAME).img \
+	   bs=512 seek=1 conv=notrunc
 
 clean:
 	rm -rf $(BUILD_DIR)

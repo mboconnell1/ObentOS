@@ -104,8 +104,6 @@ _halt:
         PRINT_STRING msg_hlt
         jmp     $
 
-; Data
-; ------------------------------------------------------------------------------
 msg_reading_vbr:        db "[MBR] Loading VBR... ", 0
 msg_jumping_vbr:        db "[MBR] Jumping to VBR... ", 13, 10, 10, 0
 msg_no_active:          db "Couldn't find active partition!", 0
@@ -113,15 +111,14 @@ msg_not_bootable:       db "Active partition not bootable!", 0
 msg_success:            db "Success!", 13, 10, 0
 msg_hlt:                db 13, 10, "HALT", 0
 
-        times (0x1B4 - ($-$$)) nop      ; Pad remaining bootstrap space.
-        times 10 db 0                   ; Zero DUID and reserved space.
+        times 446 - ($-$$) db 0      ; Pad remaining bootstrap space.
 
 partition_tables:
 .Partition1:
         db 0x80
         db 0x00
         dw 0x0000
-        db 0x07
+        db 0x01
         db 0x00
         dw 0x0000
         dd 0x00000001

@@ -22,6 +22,8 @@ _start:
 
         sti
 
+        PRINT_STRING msg_success
+
         jmp $
 
 _halt:

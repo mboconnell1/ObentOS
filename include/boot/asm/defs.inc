@@ -28,7 +28,8 @@
     ; Fixed memory locations
     ; --------------------------------------------------------------------------
     ; Segmented memory locations      |SEG:OFF|
-        SEG_MEM_LOC     BOOT_INFO,  0x0000_7E00
+        SEG_MEM_LOC     BOOT_INFO,  0x00007E00
+        SEG_MEM_LOC     STAGE_2,    0x10000000
 
     ; Structures
     ; ---------------------------------------s-----------------------------------
@@ -49,6 +50,21 @@
 
         .ReservedFlags      : resw 1    ; reserved / alignment
         .ReservedArea       : resb 32   ; room for future fields
+    endstruc
+
+    struc bpb_t
+        .BytsPerSec    resw 1   ; 0x0B
+        .SecPerClus     resb 1   ; 0x0D
+        .RsvdSecCnt     resw 1   ; 0x0E
+        .NumFATs        resb 1   ; 0x10
+        .RootEntCnt     resw 1   ; 0x11
+        .TotSec16       resw 1   ; 0x13
+        .Media          resb 1   ; 0x15
+        .FATSz16        resw 1   ; 0x16
+        .SecPerTrk      resw 1   ; 0x18
+        .NumHeads       resw 1   ; 0x1A
+        .HiddSec        resd 1   ; 0x1C
+        .TotSec32       resd 1   ; 0x20
     endstruc
 
     struc daps_t
