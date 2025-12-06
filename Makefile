@@ -70,6 +70,7 @@ volume: $(VOLUME_IMG)
 
 dirs:
 	mkdir -p $(BUILD_DIR)/boot
+	mkdir -p $(ROOTFS_DIR)
 
 # ------------------------------------------------------------
 # Assembly
@@ -143,6 +144,7 @@ $(DISK_IMG): $(MBR_BIN) $(VOLUME_IMG)
 
 clean:
 	rm -rf $(BUILD_DIR)
+	rm -rf $(ROOTFS_DIR)
 	rm -f $(BOOT_LAYOUT_INC)
 
 run: $(DISK_IMG)
