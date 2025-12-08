@@ -68,23 +68,6 @@ halt:
         PRINT_STRING MSG_HALT
         jmp     $
 
-BPB_BytesPerSec_var     dw 0
-BPB_SecPerClus_var      db 0
-BPB_RsvdSecCnt_var      dw 0
-BPB_NumFATs_var         db 0
-BPB_RootEntCnt_var      dw 0
-BPB_FATSz16_var         dw 0
-
-RootDirSectors_var      dw 0
-FirstFATSector_var      dw 0
-FirstRootDirSector_var  dw 0
-FirstDataSector_var     dw 0
-
-FAT_SectorIndex_var     dw 0xFFFF       ; -1 = invalid
-FAT_Buffer              times 512 db 0
-
-ROOT_Buffer             times 512 db 0\
-
 MSG_ENABLING_A20:       db "[STAGE 1] Enabling A20... ", 0
 MSG_INIT_VOLUME:        db "[STAGE 1] Initialising volume layout... ", 0
 MSG_FIND_STAGE2:        db "[STAGE 1] Searching for STAGE2.BIN... ", 0

@@ -122,7 +122,7 @@ partition_tables:
         db 0x00
         dw 0x0000
         dd 0x00000001
-        dd 333
+        dd 2880
 .Partition2: times 16 db 0
 .Partition3: times 16 db 0
 .Partition4: times 16 db 0
