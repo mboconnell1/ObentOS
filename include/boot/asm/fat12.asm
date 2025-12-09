@@ -37,8 +37,6 @@ g_Stage2FileSize        dd 0
 g_Stage2BytesRemaining  dd 0
 g_Stage2BytesLoaded     dd 0
 
-stage2_filename         db 'STAGE2  BIN' ; 8.3 name, padded with spaces
-
 ; ------------------------------------------------------------------------------
 ; Helpers
 ; ------------------------------------------------------------------------------
@@ -50,7 +48,9 @@ stage2_filename         db 'STAGE2  BIN' ; 8.3 name, padded with spaces
 ;
 ;           The window always starts on an even FAT-relative sector index:
 ;               base = requestedSector & ~1
-;           The buffer then holds: FAT[base] and FAT[base+1].
+;           Normally the buffer holds: FAT[base] and FAT[base+1].
+;           For an odd-length FAT, if base is the last sector (base = FATSz16-1),
+;           only that last sector is loaded (no second sector exists).
 ;
 ; Inputs:   AX      = FAT-relative sector index (within one FAT)
 ;           FS      = BOOT_INFO segment
@@ -60,6 +60,8 @@ stage2_filename         db 'STAGE2  BIN' ; 8.3 name, padded with spaces
 ;                     1 on error (out-of-range or I/O error)
 ;           g_FAT_WindowBuffer      updated
 ;           g_FAT_WindowBaseSector  updated to base, or 0FFFFh on error
+;
+; Assumes:  g_FAT_WindowBuffer is in segment 0000h and ES can be set to 0.
 ;
 ; Preserves: BX, CX, DX, ES, DI
 ; Clobbers:  AX, EAX, FLAGS
@@ -82,16 +84,15 @@ fat12_load_fat_window:
         cmp     ax, bx
         je      .cached
 
-        ; Bounds check: base and base+1 must both be within this FAT
-        ; FATSz16 is the number of sectors per fat
+        ; Bounds check: base must be within this FAT
+        ; FATSz16 is the number of sectors per FAT
         mov     ax, [g_BPB_FATSz16]
         cmp     bx, ax              ; base >= FATSz16?
         jae     .range_error
 
+        ; DX = base + 1 (used to decide if a second sector exists)
         mov     dx, bx
         inc     dx
-        cmp     dx, ax
-        jae     .range_error        ; base+1 >= FATSz16?
 
         ; Mark window as invalid while I/O is in progress
         mov     word [g_FAT_WindowBaseSector], 0FFFFh
@@ -99,37 +100,44 @@ fat12_load_fat_window:
         ; Read first FAT sector: LBA = g_FirstFATSector + base
         xor     eax, eax
         mov     ax, [g_FirstFATSector]
-        add     ax, bx
+        add     ax, bx              ; EAX = base LBA
 
-        ;mov     ax, seg g_FAT_WindowBuffer
-        mov     ax, 0
+        xor     ax, ax              ; ES = 0000h for flat binary model
         mov     es, ax
         mov     di, g_FAT_WindowBuffer
-
         call    volume_read_sector
         jc      .io_error
 
-        ; Read second FAT sector: LBA+1
-        inc     eax
+        ; Decide whether a second FAT sector (base+1) exists
+        mov     ax, [g_BPB_FATSz16]
+        cmp     dx, ax              ; base+1 >= FATSz16?
+        jae     .no_second_sector   ; if so, skip reading a second sector
 
-        mov     ax, [g_BPB_BytesPerSec]
+        ; Read second FAT sector at base+1 into the second half of the buffer
+        inc     eax                 ; EAX = base+1 LBA
+
+        xor     ax, ax              ; ES = 0000h again
+        mov     es, ax
         mov     di, g_FAT_WindowBuffer
-        add     di, ax
-
+        add     di, [g_BPB_BytesPerSec]
         call    volume_read_sector
         jc      .io_error
 
+.no_second_sector:
         ; On success, update cache base
         mov     [g_FAT_WindowBaseSector], bx
         clc
         jmp     .done
+
 .cached:
         clc
         jmp     .done
+
 .range_error:
 .io_error:
         mov     word [g_FAT_WindowBaseSector], 0FFFFh
         stc
+
 .done:
         pop     es
         pop     di
@@ -137,6 +145,8 @@ fat12_load_fat_window:
         pop     cx
         pop     bx
         ret
+
+
 
 ; ------------------------------------------------------------------------------
 ; Function: fat12_read_word_from_fat
@@ -304,103 +314,110 @@ fat12_next_cluster:
         ret
 
 ; ------------------------------------------------------------------------------
-; Function: fat12_find_stage2_in_root
+; Function: fat12_find_root_file
 ;
-; Purpose:  Scan the FAT12 root directory for the file STAGE2.BIN (8.3 name
-;           stored in stage2_filename) and, if found, record its first cluster
-;           and file size.
+; Purpose:  Scan the FAT12 root directory for a specific 8.3 filename and,
+;           if found, return its first cluster and file size.
 ;
-; Inputs:   DL      = BIOS drive (not used directly, kept for interface symmetry)
-;           FS      = BOOT_INFO segment
-;           DS      = data segment containing globals and stage2_filename
+; Inputs:   DS:SI -> 11-byte 8.3 filename (upper-case, space-padded)
+;           FS    = BOOT_INFO segment (for volume_read_sector)
 ;
-; Outputs:  CF      = 0 on success
-;                         g_Stage2FirstCluster set to file's first cluster
-;                         g_Stage2FileSize     set to file size in bytes
-;                     1 on failure
-;                         (file not found or disk I/O error)
+; Uses:     g_RootDirSectors, g_FirstRootDirSector, g_BPB_BytesPerSec,
+;           g_ROOT_Buffer, DIR_* constants.
 ;
-; Preserves: BX, CX, DX, SI, DI, ES
-; Clobbers:  AX, FLAGS
+; Outputs:  CF = 0 on success
+;               BX  = first cluster (u16)
+;               EAX = file size in bytes (u32)
+;           CF = 1 on failure (not found or I/O error)
+;
+; Clobbers: AX, BX, CX, DX, SI, DI, EAX
+; Preserves: ES, BP, DS
 ; ------------------------------------------------------------------------------
-fat12_find_stage2_in_root:
-        push    ax
-        push    bx
+
+fat12_find_root_file:
+        ; Preserve only what we promise to preserve (ES, BP, others for safety).
+        ; AX and BX are *not* preserved because they are outputs.
         push    cx
         push    dx
         push    si
         push    di
+        push    bp
         push    es
 
-        ; Prepare loop counters
+        ; Save filename pointer so we can reset SI for each compare
+        mov     bp, si                  ; BP = filename offset in DS
+
+        ; Prepare loop counters:
         ;   CX = remaining root directory sectors
-        ;   BX = current sector offset from g_FirstRootDirSector
-        ;   DX = directory entries per sector = BytesPerSec / 32
+        ;   BX = current sector index (0..CX-1)
+        ;   SI = directory entries per sector = BytesPerSec / DIR_ENTRY_SIZE
         mov     ax, [g_RootDirSectors]
         test    ax, ax
-        jz      .not_found          ; no root sectors
+        jz      .not_found              ; no root sectors
 
-        mov     cx, ax              ; CX = sectors remaining
-        xor     bx, bx              ; BX = sector index (0..CX-1)
+        mov     cx, ax                  ; CX = sectors remaining
+        xor     bx, bx                  ; BX = sector index (0..CX-1)
 
         mov     ax, [g_BPB_BytesPerSec]
         xor     dx, dx
         mov     si, DIR_ENTRY_SIZE
-        div     si                  ; AX = entries per sector
-        mov     si, ax              ; DX = entries per sector (constant)
+        div     si                      ; AX = entries per sector
+        mov     si, ax                  ; SI = entries per sector (constant)
+
 .next_sector:
         cmp     cx, 0
-        je      .not_found          ; scanned all root sectors
+        je      .not_found              ; scanned all root sectors
 
         ; Read this root directory sector into g_ROOT_Buffer
         ;   EAX = volume-relative LBA = g_FirstRootDirSector + BX
         ;   ES:DI = g_ROOT_Buffer
         xor     eax, eax
         mov     ax, [g_FirstRootDirSector]
-        add     ax, bx              ; AX = sector LBA within volume
+        add     ax, bx                  ; AX = sector LBA within volume
 
         mov     di, g_ROOT_Buffer
-        ;mov     ax, seg g_ROOT_Buffer
         xor     ax, ax
         mov     es, ax
-        
-                ; preserve sector loop counters across the call
+
+        ; preserve sector loop counters across the call
         push    cx
         push    bx
 
+        ; (This slightly redundant sequence matches your original working code.)
         mov     eax, [g_FirstRootDirSector]
-        add     ax, bx                    ; AX = sector index in volume
-        xor     eax, eax                  ; zero high word
+        add     ax, bx
+        xor     eax, eax
         mov     ax, [g_FirstRootDirSector]
         add     ax, bx
 
         call    volume_read_sector
         pop     bx
         pop     cx
-        jc      .io_error           ; CF=1 -> propagate
+        jc      .io_error               ; CF=1 -> propagate
 
         ; Scan entries in this sector
         ;   AX = remaining entries in this sector
         ;   DI = current entry offset within g_ROOT_Buffer
         mov     ax, si
         mov     di, g_ROOT_Buffer
+
 .entry_loop:
         ; Check first byte of name
         ;   0x00 => no more entries in entire root directory
         ;   0xE5 => deleted entry
         mov     al, [es:di]
         cmp     al, 0
-        je      .not_found          ; end-of-directory marker
+        je      .not_found              ; end-of-directory marker
         cmp     al, 0E5h
-        je      .next_entry;        ; deleted, skip
+        je      .next_entry             ; deleted, skip
 
-        ; Compare 11-byte 8.3 name
-        push    di                  ; save entry base offset
-        mov     si, stage2_filename
+        ; Compare 11-byte 8.3 name against DS:BP
+        push    di                      ; save entry base offset
+        mov     si, bp                  ; reset filename pointer
         mov     cx, DIR_NAME_LEN
 .next_compare_loop:
         mov     al, [es:di]
-        mov     ah, [si]
+        mov     ah, [ds:si]
         cmp     al, ah
         jne     .name_mismatch
         inc     di
@@ -413,111 +430,95 @@ fat12_find_stage2_in_root:
         ; Attribute check; require regular file
         mov     al, [es:di + DIR_ATTR_OFFSET]
         test    al, DIR_ATTR_VOLUME | DIR_ATTR_DIRECTORY
-        jnz     .next_entry_no_pop  ; treat as mismatch
+        jnz     .next_entry_no_pop      ; treat as mismatch
 
-        ; Extract first cluster (WORD at offset 26) and file size (DWORD at
-        ; offset 28)
-        mov     ax, [es:di + DIR_FIRST_CLUSTER_OFFSET]
-        mov     [g_Stage2FirstCluster], ax
+        ; Extract first cluster (WORD at offset 26) into BX
+        mov     bx, [es:di + DIR_FIRST_CLUSTER_OFFSET]
 
-        mov     ax, [es:di + DIR_FILE_SIZE_OFFSET]
-        mov     [g_Stage2FileSize], ax
-        mov     ax, [es:di + DIR_FILE_SIZE_OFFSET + 2]
-        mov     [g_Stage2FileSize + 2], ax
+        ; Extract file size (DWORD at offset 28) into EAX
+        mov     dx, [es:di + DIR_FILE_SIZE_OFFSET + 2]    ; high word
+        mov     ax, [es:di + DIR_FILE_SIZE_OFFSET]        ; low word
+        push    dx
+        push    ax
+        pop     eax                     ; EAX = file size (DX:AX)
 
         clc
         jmp     .done
+
 .name_mismatch:
-        pop     di
+        pop     di                      ; restore DI when name mismatched
+
 .next_entry_no_pop:
 .next_entry:
-        add     di, DIR_ENTRY_SIZE  ; advance to next directory entry
-        dec     ax                  ; decrement entries remaining in sector
+        add     di, DIR_ENTRY_SIZE      ; advance to next directory entry
+        dec     ax                      ; decrement entries remaining in sector
         jnz     .entry_loop
 
         ; Move to next root directory sector
-        inc     bx                  ; next sector index
-        dec     cx                  ; one fewer sector remaining
+        inc     bx                      ; next sector index
+        dec     cx                      ; one fewer sector remaining
         jmp     .next_sector
+
 .io_error:
         ; CF already set by callee
         jmp     .done
+
 .not_found:
         stc
+
 .done:
         pop     es
+        pop     bp
         pop     di
         pop     si
         pop     dx
         pop     cx
-        pop     bx
-        pop     ax
         ret
 
+
+
 ; ------------------------------------------------------------------------------
-; Function: fat12_load_stage2
+; Function: fat12_load_file_chain
 ;
-; Purpose:  Follow the FAT12 cluster chain for STAGE2.BIN starting at
-;           g_Stage2FirstCluster and load the file into memory at 0x1000:0000.
+; Purpose:  Given a starting cluster and total file size, load the file's
+;           cluster chain into memory.
 ;
-;           This routine relies on the metadata gathered by
-;           fat12_find_stage2_in_root. It reads sectors cluster-by-cluster
-;           until either:
-;               - g_Stage2BytesRemaining reaches 0, or
-;               - the FAT12 chain ends (EOC marker 0xFF8..0xFFF).
+; Inputs:   AX    = first cluster number (>= 2)
+;           EAX   = total size in bytes
+;           ES:DI = destination address
+;           FS    = BOOT_INFO / volume segment (for volume_read_sector)
+;           DS    = FAT12 globals / volume layout (g_FirstDataSector, etc.)
 ;
-; Inputs:   FS      = BOOT_INFO segment
-;           DS      = data segment containing globals
+; Outputs:  CF = 0 on success
+;               file fully loaded at ES:DI_start
+;           CF = 1 on failure (bad cluster, I/O error, size=0)
 ;
-; Requires: fat12_find_stage2_in_root has returned successfully so that:
-;               g_Stage2FirstCluster != 0 and
-;               g_Stage2FileSize     > 0
-;
-; Outputs:  CF      = 0 on success
-;                         STAGE2 loaded at 0x1000:0000
-;                         g_Stage2BytesRemaining = 0
-;                         g_Stage2BytesLoaded    = g_Stage2FileSize
-;                     1 on failure (invalid metadata, FAT error, or I/O error)
-;
-; Preserves: BX, CX, DX, SI, DI, ES
-; Clobbers:  AX, EAX, ECX, EDX, FLAGS
-;
-; Notes:     - This routine does not transfer control to STAGE2; the caller
-;             is responsible for performing a far/near jump to 0x1000:0000.
-;           - The implementation assumes STAGE2.BIN fits entirely within the
-;             64 KiB segment that begins at 0x1000. No special handling is
-;             provided for segment wrap-around.
+; Notes:    - Assumes the cluster chain is long enough for size_bytes.
+;           - Does not handle segment wrap; caller must ensure destination
+;             segment is large enough.
+;           - Clobbers 32-bit regs (EAX, EBX, ECX, EDX, ESI, EDI).
 ; ------------------------------------------------------------------------------
-fat12_load_stage2:
+
+fat12_load_file_chain:
+        ; Save 16-bit regs and ES/BP; 32-bit regs are clobbered by spec.
         push    ax
         push    bx
         push    cx
         push    dx
         push    si
         push    di
+        push    bp
         push    es
 
-        ; Sanity check first cluster and file size
-        mov     ax, [g_Stage2FirstCluster]
-        cmp     ax, 2
-        jb      .no_stage2              ; clusters 0,1 are reserved
+        ; BX = current cluster
+        mov     bx, ax
 
-        mov     eax, [g_Stage2FileSize]
-        test    eax, eax
-        jz      .no_stage2              ; file size must be non-zero
+        ; ESI = bytesRemaining = total size (from EAX)
+        mov     esi, eax
+        test    esi, esi
+        jz      .no_data                ; zero-length file => treat as error
 
-        ; Initialise accounting and load destination
-        mov     [g_Stage2BytesRemaining], eax   ; bytesRemaining = fileSize
-
-        xor     edx, edx
-        mov     [g_Stage2BytesLoaded], edx      ; bytesLoaded = 0
-
-        ; ES:DI = stage two load address
-        mov     ax, STAGE_2_SEG
-        mov     es, ax
-        mov     di, STAGE_2_OFF
-
-        ; Load BPB-derived constants
+        ; Load BPB-derived constants:
         ;   SI = sectors per cluster (SecPerClus)
         ;   BP = bytes per sector (BytesPerSec)
         mov     al, [g_BPB_SecPerClus]
@@ -526,9 +527,12 @@ fat12_load_stage2:
 
         mov     bp, [g_BPB_BytesPerSec] ; BP = BytesPerSec
 
-        mov     bx, [g_Stage2FirstCluster]      ; BX = current cluster
 .cluster_loop:
-        ; Compute starting LBA for this cluster
+        ; Sanity check cluster number; clusters 0,1 are reserved
+        cmp     bx, 2
+        jb      .bad_cluster
+
+        ; Compute starting LBA for this cluster:
         ;   dataClusterIndex = cluster - 2
         ;   firstSectorLBA   = g_FirstDataSector + dataClusterIndex * SecPerClus
         mov     ax, bx
@@ -537,19 +541,23 @@ fat12_load_stage2:
         mul     si                      ; DX:AX = dataClusterIndex * SecPerClus
 
         add     ax, [g_FirstDataSector] ; AX = firstSectorLBA
-        mov     cx, ax                  ; CX = firstSectorLBA
-        mov     dx, si                  ; DX = remainingSectors
+        mov     cx, ax                  ; CX = current sector LBA
+        mov     dx, si                  ; DX = remaining sectors in this cluster
+
 .sector_loop:
-        ; File already loaded?
-        mov     eax, [g_Stage2BytesRemaining]
+        ; Have we loaded all requested bytes?
+        mov     eax, esi                ; EAX = bytesRemaining
         test    eax, eax
-        jz      .done_success
+        jz      .success                ; nothing left to load
 
+        ; Any sectors left in this cluster?
         cmp     dx, 0
-        je      .after_cluster          ; no more sectors in cluster
+        je      .after_cluster          ; move to next cluster
 
+        ; Read this sector:
+        ;   EAX = volume-relative LBA (from CX)
         xor     eax, eax
-        mov     ax, cx                  ; EAX = volume-relative LBA for this sector
+        mov     ax, cx                  ; EAX = sector LBA
 
         call    volume_read_sector
         jc      .io_error               ; propagate error
@@ -558,47 +566,54 @@ fat12_load_stage2:
         mov     ax, bp
         add     di, ax
 
-        ; Update bytesRemaining and bytesLoaded
-        ;   bytesThisSector = min(BytesPerSec, BytesRemaining)
-        mov     eax, [g_Stage2BytesRemaining]
+        ; bytesThisSector = min(BytesPerSec, bytesRemaining)
+        ; (We mirror the original pattern: use ECX with low 16 bits = BytesPerSec)
+        mov     eax, esi                ; EAX = bytesRemaining
         xor     ecx, ecx
         mov     cx, bp                  ; ECX = BytesPerSec
         cmp     eax, ecx
         jae     .use_full_sector
-        mov     ecx, eax
+        mov     ecx, eax                ; bytesThisSector = bytesRemaining
 .use_full_sector:
-        sub     eax, ecx
-        mov     [g_Stage2BytesRemaining], eax
-
-        mov     edx, [g_Stage2BytesLoaded]
-        add     edx, ecx
-        mov     [g_Stage2BytesLoaded], edx
+        sub     esi, ecx                ; bytesRemaining -= bytesThisSector
 
         ; Advance to next sector within this cluster
         inc     cx                      ; next LBA
         dec     dx                      ; one fewer sector remaining
         jmp     .sector_loop
+
 .after_cluster:
+        ; Move to next cluster in FAT chain
         mov     ax, bx                  ; AX = current cluster
         call    fat12_next_cluster
-        jc      .fat_error              ; I/O or bad cluster
+        jc      .fat_error              ; I/O or bad cluster in FAT
 
-        ; AX = next cluster in chain, or EOC (0xFF8..0xFFF)
+        ; AX = next cluster or EOC (0xFF8..0xFFF)
         cmp     ax, 0x0FF8
-        jae     .done_success           ; end-of-chain marker
+        jae     .success                ; treat end-of-chain as success
 
         mov     bx, ax                  ; BX = next cluster
         jmp     .cluster_loop
-.no_stage2:
+
+.no_data:
         stc
         jmp     .done
+
+.bad_cluster:
+        stc
+        jmp     .done
+
 .io_error:
 .fat_error:
+        ; CF already set by callee or by us
         jmp     .done
-.done_success:
+
+.success:
         clc
+
 .done:
         pop     es
+        pop     bp
         pop     di
         pop     si
         pop     dx
@@ -606,5 +621,85 @@ fat12_load_stage2:
         pop     bx
         pop     ax
         ret
+
+
+; ------------------------------------------------------------------------------
+; Function: fat12_load_root_file
+;
+; Purpose:  Convenience helper: find a file by 8.3 name in the FAT12 root
+;           directory and load its entire contents into memory.
+;
+; Inputs:   DS:SI -> 11-byte 8.3 filename (upper-case, space-padded)
+;           ES:DI -> destination address where file will be loaded
+;           FS    = BOOT_INFO / volume segment
+;
+; Outputs:  CF = 0 on success
+;               file loaded at ES:DI
+;               EAX = file size in bytes (32-bit)
+;           CF = 1 on failure (file not found or I/O/FAT error)
+;               EAX undefined
+;
+; Notes:    - This is a thin wrapper around fat12_find_root_file +
+;             fat12_load_file_chain.
+;           - fat12_load_file_chain is allowed to clobber 32-bit regs; this
+;             wrapper preserves caller-visible 16-bit regs except AX, and
+;             restores EAX to the file size on success.
+; ------------------------------------------------------------------------------
+
+fat12_load_root_file:
+        ; Save 16-bit registers we promise to preserve (except AX) and ES.
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        push    di
+        push    bp
+        push    es
+
+        ; DS:SI points to the filename. Call fat12_find_root_file:
+        ;  On success: CF=0, AX = first_cluster, EAX = size_bytes.
+        call    fat12_find_root_file
+        jc      .error_find             ; propagate failure
+
+        ; At this point:
+        ;   AX  = first cluster
+        ;   EAX = file size (32-bit)
+        ;
+        ; We want to:
+        ;   1) Call fat12_load_file_chain(AX=cluster, EAX=size, ES:DI=dest)
+        ;   2) Preserve EAX = size for the caller on success.
+        ;
+        ; Save size on the stack.
+        push    eax
+
+        ; AX already holds first_cluster, EAX holds size_bytes.
+        ; ES:DI already holds destination from caller.
+        call    fat12_load_file_chain
+        jc      .error_load             ; loading failed; CF set by callee
+
+        ; On success, restore EAX to file size.
+        pop     eax                     ; EAX = saved size_bytes
+        clc
+        jmp     .done
+
+.error_load:
+        ; Loading failed; discard saved size and propagate CF=1.
+        add     sp, 4                   ; drop saved EAX (32 bits)
+        stc
+        jmp     .done
+
+.error_find:
+        ; fat12_find_root_file already set CF=1; nothing extra to clean.
+
+.done:
+        pop     es
+        pop     bp
+        pop     di
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        ret
+
 
 %endif

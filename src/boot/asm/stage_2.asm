@@ -20,9 +20,10 @@ _start:
         mov     sp, 0xFFFE
         mov     bp, sp
 
+        cld
         sti
 
-        PRINT_STRING MSG_SUCCESS
+        
 
         jmp $
 

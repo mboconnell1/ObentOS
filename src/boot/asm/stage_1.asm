@@ -24,7 +24,6 @@ _start:
         cld
         sti
 
-        ; BOOT_INFO in FS:SI
         mov     ax, BOOT_INFO_SEG
         mov     fs, ax
         mov     si, BOOT_INFO_OFF
@@ -32,31 +31,38 @@ _start:
         mov     dl, [fs:si + boot_info_t.BootDrive]
         mov     [g_BootDrive], dl
 
-        ; Enable A20
         PRINT_STRING MSG_ENABLING_A20
         call    a20_enable
         jc      halt
         PRINT_STRING MSG_SUCCESS
 
-        ; Initialise FAT12 volume layout from BPB
         PRINT_STRING MSG_INIT_VOLUME
         call    volume_init_layout
-        PRINT_STRING MSG_SUCCESS
-
-
-        PRINT_STRING MSG_FIND_STAGE2
-        mov     dl, [g_BootDrive]
-        call    fat12_find_stage2_in_root
         jc      halt
         PRINT_STRING MSG_SUCCESS
+
+       
+        PRINT_STRING MSG_FIND_STAGE2
+        mov     si, STAGE2_FILENAME
+        call    fat12_find_root_file
+        jc      halt
+        PRINT_STRING MSG_SUCCESS
+
+        mov     [stage2_first_cluster], bx
+        mov     [stage2_file_size], eax
 
         PRINT_STRING MSG_STAGE2_LDNG
-        mov     dl, [g_BootDrive]
-        call    fat12_load_stage2
+        mov     ax, STAGE_2_SEG
+        mov     es, ax
+        mov     di, STAGE_2_OFF
+
+        mov     ax, [stage2_first_cluster]
+        mov     eax, [stage2_file_size]
+
+        call    fat12_load_file_chain
         jc      halt
         PRINT_STRING MSG_SUCCESS
 
-        ; Jump to loader
         PRINT_STRING MSG_STAGE2_JMPG
         mov     ax, STAGE_2_SEG
         mov     bx, STAGE_2_OFF
@@ -67,6 +73,12 @@ _start:
 halt:
         PRINT_STRING MSG_HALT
         jmp     $
+
+
+STAGE2_FILENAME:        db 'STAGE2  BIN'      ; 11 bytes
+
+stage2_first_cluster:   dw 0
+stage2_file_size:       dd 0
 
 MSG_ENABLING_A20:       db "[STAGE 1] Enabling A20... ", 0
 MSG_INIT_VOLUME:        db "[STAGE 1] Initialising volume layout... ", 0
