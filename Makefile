@@ -1,7 +1,7 @@
 OS_NAME        := ObentOS
 
 # Geometry
-VOL_SECTORS		:= 2880
+VOL_SECTORS		:= 333
 BYTES_PER_SEC	:= 512
 ROOT_ENTRIES	:= 64
 NUM_FATS		:= 2
@@ -112,7 +112,7 @@ $(VOLUME_IMG): $(VOLUME_FAT_IMG) $(VBR_BIN) $(STAGE1_BIN)
 
 	dd if=$(VBR_BIN) of=$@ bs=512 seek=0 conv=notrunc
 
-	dd if=$(STAGE1_BIN) of=$@ bs=512 seek=1 conv=notrunc
+	dd if=$(STAGE1_BIN) of=$@ bs=512 seek=1 count=$(STAGE1_SECTORS) conv=notrunc
 
 
 # ------------------------------------------------------------

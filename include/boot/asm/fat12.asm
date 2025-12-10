@@ -102,9 +102,11 @@ fat12_load_fat_window:
         mov     ax, [g_FirstFATSector]
         add     ax, bx              ; EAX = base LBA
 
+        push    ax
         xor     ax, ax              ; ES = 0000h for flat binary model
         mov     es, ax
         mov     di, g_FAT_WindowBuffer
+        pop     ax
         call    volume_read_sector
         jc      .io_error
 
@@ -116,10 +118,12 @@ fat12_load_fat_window:
         ; Read second FAT sector at base+1 into the second half of the buffer
         inc     eax                 ; EAX = base+1 LBA
 
+        push    ax
         xor     ax, ax              ; ES = 0000h again
         mov     es, ax
         mov     di, g_FAT_WindowBuffer
         add     di, [g_BPB_BytesPerSec]
+        pop     ax
         call    volume_read_sector
         jc      .io_error
 
@@ -484,7 +488,7 @@ fat12_find_root_file:
 ;           cluster chain into memory.
 ;
 ; Inputs:   AX    = first cluster number (>= 2)
-;           EAX   = total size in bytes
+;           ESI   = total size in bytes
 ;           ES:DI = destination address
 ;           FS    = BOOT_INFO / volume segment (for volume_read_sector)
 ;           DS    = FAT12 globals / volume layout (g_FirstDataSector, etc.)
@@ -500,7 +504,6 @@ fat12_find_root_file:
 ; ------------------------------------------------------------------------------
 
 fat12_load_file_chain:
-        ; Save 16-bit regs and ES/BP; 32-bit regs are clobbered by spec.
         push    ax
         push    bx
         push    cx
@@ -510,13 +513,10 @@ fat12_load_file_chain:
         push    bp
         push    es
 
-        ; BX = current cluster
-        mov     bx, ax
+        mov     bx, ax          ; BX = current cluster
 
-        ; ESI = bytesRemaining = total size (from EAX)
-        mov     esi, eax
         test    esi, esi
-        jz      .no_data                ; zero-length file => treat as error
+        jz      .no_data             ; zero-length file => treat as error
 
         ; Load BPB-derived constants:
         ;   SI = sectors per cluster (SecPerClus)

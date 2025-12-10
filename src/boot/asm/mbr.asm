@@ -3,7 +3,7 @@
 
         jmp     _start
 
-; Include files
+; Includes
 ; ------------------------------------------------------------------------------
 %include "defs.inc"
 %include "print_string.asm"
@@ -40,13 +40,6 @@ _jump:
         mov     cx, boot_info_t_size
         xor     al, al
         rep     stosb
-
-        ; BOOT_INFO.Signature = 'BI'
-        mov     ax, 'BI'
-        mov     [es:BOOT_INFO_OFF + boot_info_t.Signature], ax
-
-        ; BOOT_INFO.Version = 1
-        mov     byte [es:BOOT_INFO_OFF + boot_info_t.Version], 1
 
         ; BOOT_INFO.BootDrive = DL
         mov     [es:BOOT_INFO_OFF + boot_info_t.BootDrive], dl
@@ -104,6 +97,8 @@ _halt:
         PRINT_STRING msg_hlt
         jmp     $
 
+; Data
+; ------------------------------------------------------------------------------
 msg_reading_vbr:        db "[MBR] Loading VBR... ", 0
 msg_jumping_vbr:        db "[MBR] Jumping to VBR... ", 13, 10, 10, 0
 msg_no_active:          db "Couldn't find active partition!", 0

@@ -12,6 +12,8 @@
 %include "read_disk.asm"
 %include "volume.asm"
 
+; Code
+; ------------------------------------------------------------------------------
 _start:
         cli
         
@@ -40,7 +42,6 @@ _start:
         call    volume_init_layout
         jc      halt
         PRINT_STRING MSG_SUCCESS
-
        
         PRINT_STRING MSG_FIND_STAGE2
         mov     si, STAGE2_FILENAME
@@ -57,7 +58,7 @@ _start:
         mov     di, STAGE_2_OFF
 
         mov     ax, [stage2_first_cluster]
-        mov     eax, [stage2_file_size]
+        mov     esi, [stage2_file_size]
 
         call    fat12_load_file_chain
         jc      halt
@@ -74,7 +75,8 @@ halt:
         PRINT_STRING MSG_HALT
         jmp     $
 
-
+; Data
+; ------------------------------------------------------------------------------
 STAGE2_FILENAME:        db 'STAGE2  BIN'      ; 11 bytes
 
 stage2_first_cluster:   dw 0
