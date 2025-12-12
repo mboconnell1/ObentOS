@@ -17,8 +17,9 @@ _start:
         mov     ax, cs
         mov     ds, ax
         mov     es, ax
+        mov     ax, STAGE2_STACK_TOP_SEG
         mov     ss, ax
-        mov     sp, 0xFFFE
+        mov     sp, STAGE2_STACK_TOP_OFF
         mov     bp, sp
 
         cld

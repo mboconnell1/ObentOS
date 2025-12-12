@@ -1,7 +1,7 @@
 OS_NAME        := ObentOS
 
 # Geometry
-VOL_SECTORS		:= 333
+VOL_SECTORS		:= 2880
 BYTES_PER_SEC	:= 512
 ROOT_ENTRIES	:= 64
 NUM_FATS		:= 2

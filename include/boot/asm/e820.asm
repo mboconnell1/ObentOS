@@ -104,7 +104,7 @@ DetectMemoryE820:
 .e820_error:
         ; No entries were collected; treat as "no E820 support"
         cmp     si, 0
-        jae     .e820_done_no_entries
+        je     .e820_done_no_entries
 
         ; Partial map collected; treat as truncated
         mov     bp, 1

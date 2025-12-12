@@ -20,24 +20,26 @@ _relocate:
         xor     ax, ax
         mov     ds, ax
         mov     es, ax
+        mov     ax, MBR_STACK_TOP_SEG
         mov     ss, ax
-        mov     sp, ax
+        mov     sp, MBR_STACK_TOP_OFF
+        mov     bp, sp
 
         ; Relocate MBR and near jump.
-        mov     cx, 0x0200              ; No. of bytes to copy (512 in MBR).
-        mov     si, 0x7C00              ; Current MBR address.
-        mov     di, 0x0600              ; New MBR Address.
+        mov     cx, MBR_RGN_SIZE        ; No. of bytes to copy (512 in MBR).
+        mov     si, BOOTSECT_OFF        ; Current MBR address.
+        mov     di, MBR_OFF             ; New MBR Address.
         rep     movsb                   ; Copy MBR.
         jmp     0x0:_jump
 
 _jump:
         sti
-        mov     bp, sp
 
         ; Initialise BOOT_INFO at 0000:7E00
         mov     ax, BOOT_INFO_SEG
         mov     es, ax
         mov     cx, boot_info_t_size
+        mov     di, BOOT_INFO_OFF
         xor     al, al
         rep     stosb
 
@@ -45,7 +47,7 @@ _jump:
         mov     [es:BOOT_INFO_OFF + boot_info_t.BootDrive], dl
 
         ; Check partition table for a bootable partition.
-        lea     bx, [0x0600 + mbr_t.PartitionEntry1]
+        lea     bx, [MBR_OFF + mbr_t.PartitionEntry1]
         mov     cx, 4
 .loop:
         mov     al, byte [bx]
@@ -66,11 +68,11 @@ _jump:
         mov     eax, [si]
         mov     [es:BOOT_INFO_OFF + boot_info_t.PartitionLBAAbs], eax
 
-        ; Read VBR into 0000:7C000
+        ; Read VBR into 0000:7C00
         mov     ebx, eax
-        xor     ax, ax
+        mov     ax, BOOTSECT_SEG
         mov     es, ax
-        mov     di, 0x7C00
+        mov     di, BOOTSECT_OFF
         mov     cx, 1
 
         PRINT_STRING msg_reading_vbr
@@ -83,7 +85,7 @@ _jump:
         jne     .err_partition_not_bootable
 
         PRINT_STRING msg_jumping_vbr
-        jmp     0x0:0x7C00
+        jmp     BOOTSECT_SEG:BOOTSECT_OFF
 
 .err_no_active_partition:
         PRINT_STRING msg_no_active

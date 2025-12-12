@@ -20,8 +20,10 @@ _start:
         xor     ax, ax
         mov     ds, ax
         mov     es, ax
+        mov     ax, STAGE1_STACK_TOP_OFF
         mov     ss, ax
-        mov     sp, 0x8000
+        mov     sp, STAGE1_STACK_TOP_OFF
+        mov     bp, sp
 
         cld
         sti
@@ -53,9 +55,9 @@ _start:
         mov     [stage2_file_size], eax
 
         PRINT_STRING MSG_STAGE2_LDNG
-        mov     ax, STAGE_2_SEG
+        mov     ax, STAGE2_SEG
         mov     es, ax
-        mov     di, STAGE_2_OFF
+        mov     di, STAGE2_OFF
 
         mov     ax, [stage2_first_cluster]
         mov     esi, [stage2_file_size]
@@ -65,8 +67,8 @@ _start:
         PRINT_STRING MSG_SUCCESS
 
         PRINT_STRING MSG_STAGE2_JMPG
-        mov     ax, STAGE_2_SEG
-        mov     bx, STAGE_2_OFF
+        mov     ax, STAGE2_SEG
+        mov     bx, STAGE2_OFF
         push    ax
         push    bx
         retf

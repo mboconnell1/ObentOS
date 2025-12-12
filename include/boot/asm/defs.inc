@@ -1,6 +1,8 @@
 %ifndef __DEFS__INC
     %define __DEFS__INC
 
+    %include "memory_map.inc"
+
     ; Definitions
     ; --------------------------------------------------------------------------
     ; Get b high/low bits of a.
@@ -8,31 +10,7 @@
     %define LOW_BITS(a,b)  ((a) & ((1 << (b)) - 1))
     
     ; Compute the linear address of the Nth E820 entry.
-    %define E820_ENTRY_ADDR(i)  (E820_MAP_MEM + ((i) * (E820_ENTRY_SIZE))
-
-    ; Macros
-    ; --------------------------------------------------------------------------
-    ; Creates constants for a segmented memory address.
-    ; %1    - Label             (name of memory location)
-    ; %2    - 32-bit address    ([16-bit segment]_[16-bit offset])
-    %macro SEG_MEM_LOC 2
-        %1_SEG  EQU HIGH_BITS(%2,16)
-        %1_OFF  EQU LOW_BITS(%2,16)
-        %1_MEM  EQU (%1_SEG << 4) + %1_OFF
-    %endmacro
-
-    ; Creates constant for a non-segmented memory address.
-    ; %1    - Label             (name of memory location)
-    ; %2    - 32-bit address
-    %macro MEM_LOC 2
-        %1_MEM  EQU %2
-    %endmacro
-
-    ; Fixed memory locations
-    ; --------------------------------------------------------------------------
-        SEG_MEM_LOC     BOOT_INFO,  0x0000_7E00
-        SEG_MEM_LOC     STAGE_2,    0x1000_0000
-        SEG_MEM_LOC     E820_MAP,   0x0000_0600
+    %define E820_ENTRY_ADDR(i)  (E820_MAP_MEM + ((i) * (E820_ENTRY_SIZE)))
 
     ; Constants
     ; --------------------------------------------------------------------------

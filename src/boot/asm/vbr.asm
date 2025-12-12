@@ -25,8 +25,10 @@ vbr_start:
     xor     ax, ax
     mov     ds, ax
     mov     es, ax
+    mov     ax, VBR_STACK_TOP_SEG
     mov     ss, ax
-    mov     sp, 0x7000
+    mov     sp, VBR_STACK_TOP_OFF
+    mov     bp, sp
 
     cld
     sti
@@ -47,9 +49,9 @@ vbr_start:
 
     ; Load stage one into 0000:8000
     PRINT_STRING MSG_STAGE1_LDNG
-    mov     ax, 0
+    mov     ax, STAGE1_SEG
     mov     es, ax
-    mov     di, 0x8000
+    mov     di, STAGE1_OFF
     mov     cx, STAGE1_SECTORS
 
     call    __read_disk
@@ -58,7 +60,7 @@ vbr_start:
 
     ; Jump to stage 1
     PRINT_STRING MSG_STAGE1_JMPG
-    jmp     0x0:0x8000
+    jmp     STAGE1_SEG:STAGE1_OFF
 
 vbr_halt:
     PRINT_STRING MSG_HALT
