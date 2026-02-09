@@ -6,7 +6,7 @@
 ; Includes
 ; ------------------------------------------------------------------------------
 %include "defs.inc"
-%include "enable_a20.asm"
+%include "a20.asm"
 %include "fat12.asm"
 %include "print_string.asm"
 %include "read_disk.asm"
