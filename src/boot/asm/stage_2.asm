@@ -12,11 +12,11 @@
 %include "read_disk.asm"
 %include "volume.asm"
 
-; 1 MiB is not representable as seg:off by simply shifting >> 4 because the
-; segment value overflows 16 bits. Load the kernel at physical 0x0010_0000
-; using the canonical 0xFFFF:0x0010 pointer.
-%define KERNEL_LOAD_OFF         0x0010
-%define KERNEL_LOAD_SEG         ((KERNEL_MEM - KERNEL_LOAD_OFF) >> 4)
+%define STAGE2_BASE        STAGE2_MEM
+%define STAGE2_BASE_LOW    (STAGE2_BASE & 0xFFFF)
+%define STAGE2_BASE_MID    ((STAGE2_BASE >> 16) & 0xFF)
+%define STAGE2_BASE_HIGH   ((STAGE2_BASE >> 24) & 0xFF)
+%define VGA_TEXT_MEM       0xB8000
 
 ; Code
 ; ------------------------------------------------------------------------------
@@ -62,10 +62,10 @@ _start:
         mov     [kernel_first_cluster], bx
         mov     [kernel_file_size], eax
 
-        PRINT_STRING MSG_KERNEL_LDNG
-        mov     ax, KERNEL_LOAD_SEG
+        PRINT_STRING MSG_KERNEL_BUF_LDNG
+        mov     ax, STAGE2_KERNEL_BUF_SEG
         mov     es, ax
-        mov     di, KERNEL_LOAD_OFF
+        mov     di, STAGE2_KERNEL_BUF_OFF
 
         mov     ax, [kernel_first_cluster]
         mov     esi, [kernel_file_size]
@@ -73,6 +73,32 @@ _start:
         call    fat12_load_file_chain
         jc      halt
         PRINT_STRING MSG_SUCCESS
+
+        PRINT_STRING MSG_SWITCHING_PM
+        cli
+        mov     ax, cs                 ; BIOS calls may have clobbered DS/ES
+        mov     ds, ax
+        mov     es, ax
+        lgdt    [gdt_descriptor]
+        mov     eax, cr0
+        or      eax, 1
+        mov     cr0, eax
+
+        jmp     CODE_SEG:start_protected_mode
+
+[bits 32]
+start_protected_mode:
+        mov     ax, DATA_SEG
+        mov     ds, ax
+        mov     es, ax
+        mov     fs, ax
+        mov     gs, ax
+        mov     ss, ax
+        mov     esp, STAGE2_STACK_TOP_OFF
+
+        mov     al, 'A'
+        mov     ah, 0x0f
+        mov     [VGA_TEXT_MEM - STAGE2_BASE], ax    ; DS base is STAGE2_BASE
 
         jmp $
 
@@ -82,6 +108,34 @@ halt:
 
 ; Data
 ; ------------------------------------------------------------------------------
+gdt:
+.null_descriptor:
+                        dd 0
+                        dd 0
+.code_descriptor:
+                        dw 0xffff
+                        dw STAGE2_BASE_LOW
+                        db STAGE2_BASE_MID
+                        db 10011010b
+                        db 11001111b
+                        db STAGE2_BASE_HIGH
+.data_descriptor:
+                        dw 0xffff
+                        dw STAGE2_BASE_LOW
+                        db STAGE2_BASE_MID
+                        db 10010010b
+                        db 11001111b
+                        db STAGE2_BASE_HIGH
+.end:
+
+gdt_descriptor:
+                        dw gdt.end - gdt - 1
+                        dd gdt + STAGE2_MEM
+
+CODE_SEG                equ gdt.code_descriptor - gdt
+DATA_SEG                equ gdt.data_descriptor - gdt
+
+
 KERNEL_FILENAME:        db 'KERNEL  BIN'      ; 11 bytes
 
 kernel_first_cluster:   dw 0
@@ -90,7 +144,8 @@ kernel_file_size:       dd 0
 MSG_E820:               db "[STAGE 2] Detecting available memory... ", 0
 MSG_INIT_VOLUME:        db "[STAGE 2] Initialising volume layout... ", 0
 MSG_FIND_KERNEL:        db "[STAGE 2] Searching for KERNEL.BIN... ", 0
-MSG_KERNEL_LDNG:        db "[STAGE 2] Loading kernel... ", 0
+MSG_KERNEL_BUF_LDNG:    db "[STAGE 2] Loading kernel into buffer... ", 0
+MSG_SWITCHING_PM:       db "[STAGE 2] Switching to protected mode...", 0
 
 MSG_SUCCESS:            db "Success!", 13, 10, 0
 MSG_HLT:                db 13, 10, "HALT", 0

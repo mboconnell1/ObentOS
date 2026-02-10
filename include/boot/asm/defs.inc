@@ -109,4 +109,10 @@
         .SectorCount        : resw 2
     endstruc
 
+    struc gdt_t
+        .NullDescriptor     : resd 2
+        .CodeDescriptor     : resq 1
+        .DataDescriptor     : resq 1
+    endstruc
+
 %endif

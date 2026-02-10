@@ -553,14 +553,6 @@ fat12_load_file_chain:
         pop     cx
         jc      .io_error               ; propagate error
 
-        ;DEBUG
-        push    ax
-        mov ah, 0x0E
-        mov al, '.'
-        int 0x10
-        pop ax
-        ;DEBUG
-
         ; Advance destination pointer by BytesPerSec
         mov     ax, bp
         add     di, ax
