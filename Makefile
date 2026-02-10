@@ -22,13 +22,15 @@ MBR_SRC        	:= src/boot/asm/mbr.asm
 VBR_SRC        	:= src/boot/asm/vbr.asm
 STAGE1_SRC     	:= src/boot/asm/stage_1.asm
 STAGE2_SRC     	:= src/boot/asm/stage_2.asm
+KERNEL_SRC		:= src/boot/asm/kernel.asm
 
-# Built artefacts
+# Build artefacts
 MBR_BIN        	:= $(BUILD_DIR)/boot/mbr.bin
 VBR_BIN        	:= $(BUILD_DIR)/boot/vbr.bin
 BPB_BIN			:= $(BUILD_DIR)/boot/bpb.bin
 STAGE1_BIN     	:= $(BUILD_DIR)/boot/stage_1.bin
 STAGE2_BIN    	:= $(BUILD_DIR)/boot/stage_2.bin
+KERNEL_BIN		:= $(BUILD_DIR)/boot/kernel.bin
 
 VOLUME_FAT_IMG	:= $(BUILD_DIR)/volume_fat.img
 VOLUME_IMG   	:= $(BUILD_DIR)/volume.img
@@ -38,6 +40,7 @@ BOOT_LAYOUT_INC := $(ASM_INC)/boot_layout.inc
 STAGE1_SECTORS = $(shell awk '/STAGE1_SECTORS/ {print $$3}' $(BOOT_LAYOUT_INC) 2>/dev/null)
 
 ROOTFS_STAGE2 := $(ROOTFS_DIR)/STAGE2.BIN
+ROOTFS_KERNEL := $(ROOTFS_DIR)/KERNEL.BIN
 
 # ------------------------------------------------------------
 # Phony targets
@@ -75,11 +78,17 @@ $(VBR_BIN): $(VBR_SRC) $(BOOT_LAYOUT_INC) $(BPB_BIN) | dirs
 $(STAGE2_BIN): $(STAGE2_SRC) | dirs
 	$(ASM) $(ASM_FLAGS) -o $@ $<
 
+$(KERNEL_BIN): $(KERNEL_SRC) | dirs
+	$(ASM) $(ASM_FLAGS) -o $@ $<
+
 # ------------------------------------------------------------
 # RootFS population
 # ------------------------------------------------------------
 
 $(ROOTFS_STAGE2): $(STAGE2_BIN) | dirs
+	cp $< $@
+
+$(ROOTFS_KERNEL): $(KERNEL_BIN) | dirs
 	cp $< $@
 
 # ------------------------------------------------------------
@@ -89,7 +98,7 @@ $(ROOTFS_STAGE2): $(STAGE2_BIN) | dirs
 $(BPB_BIN): $(VOLUME_FAT_IMG)
 	dd if=$< of=$@ bs=1 skip=11 count=51 status=none
 
-$(VOLUME_FAT_IMG): $(ROOTFS_STAGE2) $(BOOT_LAYOUT_INC)
+$(VOLUME_FAT_IMG): $(ROOTFS_STAGE2) $(ROOTFS_KERNEL) $(BOOT_LAYOUT_INC)
 	@if [ -z "$(STAGE1_SECTORS)" ]; then \
 		echo "ERROR: boot_layout.inc missing STAGE1_SECTORS"; exit 1; fi
 	rm -f $@

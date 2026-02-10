@@ -20,7 +20,7 @@ _start:
         xor     ax, ax
         mov     ds, ax
         mov     es, ax
-        mov     ax, STAGE1_STACK_TOP_OFF
+        mov     ax, STAGE1_STACK_TOP_SEG
         mov     ss, ax
         mov     sp, STAGE1_STACK_TOP_OFF
         mov     bp, sp
@@ -67,11 +67,7 @@ _start:
         PRINT_STRING MSG_SUCCESS
 
         PRINT_STRING MSG_STAGE2_JMPG
-        mov     ax, STAGE2_SEG
-        mov     bx, STAGE2_OFF
-        push    ax
-        push    bx
-        retf
+        jmp     STAGE2_SEG:STAGE2_OFF
 
 halt:
         PRINT_STRING MSG_HALT

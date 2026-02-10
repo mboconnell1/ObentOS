@@ -103,8 +103,8 @@ fat12_load_fat_window:
         add     ax, bx              ; EAX = base LBA
 
         push    ax
-        xor     ax, ax              ; ES = 0000h for flat binary model
-        mov     es, ax
+        push    ds
+        pop     es
         mov     di, g_FAT_WindowBuffer
         pop     ax
         call    volume_read_sector
@@ -119,8 +119,8 @@ fat12_load_fat_window:
         inc     eax                 ; EAX = base+1 LBA
 
         push    ax
-        xor     ax, ax              ; ES = 0000h again
-        mov     es, ax
+        push    ds
+        pop     es
         mov     di, g_FAT_WindowBuffer
         add     di, [g_BPB_BytesPerSec]
         pop     ax
@@ -221,9 +221,8 @@ fat12_read_word_from_fat:
         mov     di, g_FAT_WindowBuffer
         add     di, ax
 
-        ;mov     ax, seg g_FAT_WindowBuffer
-        mov     ax, 0
-        mov     es, ax
+        push    ds
+        pop     es
 
         ; Read 16-bit little-endian word from window
         mov     ax, [es:di]
@@ -380,16 +379,13 @@ fat12_find_root_file:
         add     ax, bx                  ; AX = sector LBA within volume
 
         mov     di, g_ROOT_Buffer
-        xor     ax, ax
-        mov     es, ax
+        push    ds
+        pop     es
 
         ; preserve sector loop counters across the call
         push    cx
         push    bx
 
-        ; (This slightly redundant sequence matches your original working code.)
-        mov     eax, [g_FirstRootDirSector]
-        add     ax, bx
         xor     eax, eax
         mov     ax, [g_FirstRootDirSector]
         add     ax, bx
@@ -519,12 +515,7 @@ fat12_load_file_chain:
         jz      .no_data             ; zero-length file => treat as error
 
         ; Load BPB-derived constants:
-        ;   SI = sectors per cluster (SecPerClus)
         ;   BP = bytes per sector (BytesPerSec)
-        mov     al, [g_BPB_SecPerClus]
-        mov     ah, 0
-        mov     si, ax                  ; SI = SecPerClus
-
         mov     bp, [g_BPB_BytesPerSec] ; BP = BytesPerSec
 
 .cluster_loop:
@@ -535,14 +526,13 @@ fat12_load_file_chain:
         ; Compute starting LBA for this cluster:
         ;   dataClusterIndex = cluster - 2
         ;   firstSectorLBA   = g_FirstDataSector + dataClusterIndex * SecPerClus
+        movzx   cx, byte [g_BPB_SecPerClus]
         mov     ax, bx
         sub     ax, 2
-        xor     dx, dx
-        mul     si                      ; DX:AX = dataClusterIndex * SecPerClus
-
+        mul     cx                      ; DX:AX = dataClusterIndex * SecPerClus
         add     ax, [g_FirstDataSector] ; AX = firstSectorLBA
         mov     cx, ax                  ; CX = current sector LBA
-        mov     dx, si                  ; DX = remaining sectors in this cluster
+        movzx   dx, byte [g_BPB_SecPerClus]    ; DX = remaining sectors in this cluster
 
 .sector_loop:
         ; Have we loaded all requested bytes?
@@ -558,17 +548,40 @@ fat12_load_file_chain:
         ;   EAX = volume-relative LBA (from CX)
         xor     eax, eax
         mov     ax, cx                  ; EAX = sector LBA
-
+        push    cx
         call    volume_read_sector
+        pop     cx
         jc      .io_error               ; propagate error
+
+        ;DEBUG
+        push    ax
+        mov ah, 0x0E
+        mov al, '.'
+        int 0x10
+        pop ax
+        ;DEBUG
 
         ; Advance destination pointer by BytesPerSec
         mov     ax, bp
         add     di, ax
+        jnc     .no_wrap
 
+        ; DI wrapped -> bump ES by BytesPerSec/16 paragraphs
+        ; For 512 bytes/sec, that's 32 paragraphs = 0x20
+        mov     ax, bp
+        shr     ax, 4
+
+        push    bx
+        mov     bx, es
+        add     bx, ax
+        mov     es, bx
+        pop     bx
+
+.no_wrap:
         ; bytesThisSector = min(BytesPerSec, bytesRemaining)
         ; (We mirror the original pattern: use ECX with low 16 bits = BytesPerSec)
         mov     eax, esi                ; EAX = bytesRemaining
+        push    cx
         xor     ecx, ecx
         mov     cx, bp                  ; ECX = BytesPerSec
         cmp     eax, ecx
@@ -578,6 +591,7 @@ fat12_load_file_chain:
         sub     esi, ecx                ; bytesRemaining -= bytesThisSector
 
         ; Advance to next sector within this cluster
+        pop     cx
         inc     cx                      ; next LBA
         dec     dx                      ; one fewer sector remaining
         jmp     .sector_loop
@@ -590,9 +604,22 @@ fat12_load_file_chain:
 
         ; AX = next cluster or EOC (0xFF8..0xFFF)
         cmp     ax, 0x0FF8
-        jae     .success                ; treat end-of-chain as success
+        jb      .not_eoc
 
-        mov     bx, ax                  ; BX = next cluster
+        ; EOC reached — only success if we've loaded everything
+        test    esi, esi
+        jz      .success
+
+        ; Otherwise: truncated chain => hard error
+        mov ah, 0x0E
+        mov al, '!'
+        int 0x10
+        jmp $
+        stc
+        jmp     .done
+
+.not_eoc:
+        mov     bx, ax
         jmp     .cluster_loop
 
 .no_data:

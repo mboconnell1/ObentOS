@@ -53,25 +53,28 @@ volume_init_layout:
         push    bx
         push    cx
         push    dx
+        push    es
 
-        mov     bx, 0x7C00 + 11
+        mov     ax, BOOTSECT_SEG
+        mov     es, ax
+        mov     bx, BOOTSECT_OFF + 11
 
-        mov     ax, [bx + bpb_t.BytsPerSec]
+        mov     ax, [es:bx + bpb_t.BytsPerSec]
         mov     [g_BPB_BytesPerSec], ax
 
-        mov     al, [bx + bpb_t.SecPerClus]
+        mov     al, [es:bx + bpb_t.SecPerClus]
         mov     [g_BPB_SecPerClus], al
 
-        mov     ax, [bx + bpb_t.RsvdSecCnt]
+        mov     ax, [es:bx + bpb_t.RsvdSecCnt]
         mov     [g_BPB_RsvdSecCnt], ax
 
-        mov     al, [bx + bpb_t.NumFATs]
+        mov     al, [es:bx + bpb_t.NumFATs]
         mov     [g_BPB_NumFATs], al
 
-        mov     ax, [bx + bpb_t.RootEntCnt]
+        mov     ax, [es:bx + bpb_t.RootEntCnt]
         mov     [g_BPB_RootEntCnt], ax
 
-        mov     ax, [bx + bpb_t.FATSz16]
+        mov     ax, [es:bx + bpb_t.FATSz16]
         mov     [g_BPB_FATSz16], ax
 
         ; RootDirSectors = (RootEntCnt*32 + BytesPerSec - 1) / BytesPerSec
@@ -101,6 +104,7 @@ volume_init_layout:
         add     ax, [g_RootDirSectors]
         mov     [g_FirstDataSector], ax
 
+        pop     es
         pop     dx
         pop     cx
         pop     bx
@@ -119,15 +123,18 @@ volume_init_layout:
 ;
 ; Outputs:  ES:DI   = buffer filled with one sector of data
 ;
-; Preserves: SI, EBX
+; Preserves: SI, EBX, CX, DX
 ; Clobbers:  (none)
 ; Notes:    Uses PartitionLBAAbs from BOOT_INFO to compute the absolute LBA.
 ; ------------------------------------------------------------------------------
 volume_read_sector:
+        push    eax
         push    ebx
+        push    dx
         push    si
         push    es
         push    di
+        push    cx
 
         mov     si, BOOT_INFO_OFF
         mov     ebx, [fs:si + boot_info_t.PartitionLBAAbs]
@@ -137,10 +144,13 @@ volume_read_sector:
         mov     cx, 1
         call    __read_disk
 
+        pop     cx
         pop     di
         pop     es
         pop     si
+        pop     dx
         pop     ebx
+        pop     eax
         ret
 
 %endif
