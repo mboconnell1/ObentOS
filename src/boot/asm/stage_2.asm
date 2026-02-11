@@ -1,21 +1,18 @@
 [bits 16]
-[org 0]
+%include "defs.inc"
+[org STAGE2_MEM]
 
         jmp _start
 
 ; Includes
 ; ------------------------------------------------------------------------------
-%include "defs.inc"
 %include "e820.asm"
 %include "fat12.asm"
 %include "print_string.asm"
 %include "read_disk.asm"
 %include "volume.asm"
+%include "gdt.asm"
 
-%define STAGE2_BASE        STAGE2_MEM
-%define STAGE2_BASE_LOW    (STAGE2_BASE & 0xFFFF)
-%define STAGE2_BASE_MID    ((STAGE2_BASE >> 16) & 0xFF)
-%define STAGE2_BASE_HIGH   ((STAGE2_BASE >> 24) & 0xFF)
 %define VGA_TEXT_MEM       0xB8000
 
 ; Code
@@ -43,16 +40,19 @@ _start:
         mov     dl, [fs:si + boot_info_t.BootDrive]
         mov     [g_BootDrive], dl
 
+        ; Get memory information.
         PRINT_STRING MSG_E820
         call    DetectMemoryE820
         jc      halt
         PRINT_STRING MSG_SUCCESS
 
+        ; Initialise volume layout.
         PRINT_STRING MSG_INIT_VOLUME
         call    volume_init_layout
         jc      halt
         PRINT_STRING MSG_SUCCESS
 
+        ; Locate KERNEL.BIN.
         PRINT_STRING MSG_FIND_KERNEL
         mov     si, KERNEL_FILENAME
         call    fat12_find_root_file
@@ -62,6 +62,7 @@ _start:
         mov     [kernel_first_cluster], bx
         mov     [kernel_file_size], eax
 
+        ; Load the kernel into a buffer.
         PRINT_STRING MSG_KERNEL_BUF_LDNG
         mov     ax, STAGE2_KERNEL_BUF_SEG
         mov     es, ax
@@ -74,33 +75,30 @@ _start:
         jc      halt
         PRINT_STRING MSG_SUCCESS
 
-        PRINT_STRING MSG_SWITCHING_PM
-        cli
-        mov     ax, cs                 ; BIOS calls may have clobbered DS/ES
-        mov     ds, ax
-        mov     es, ax
-        lgdt    [gdt_descriptor]
-        mov     eax, cr0
-        or      eax, 1
-        mov     cr0, eax
+        ; Copy GDT to global location.
+        PRINT_STRING MSG_COPYING_GDT
+        call copy_gdt_to_global
+        PRINT_STRING MSG_SUCCESS
 
-        jmp     CODE_SEG:start_protected_mode
+        ; Switch to protected mode.
+        PRINT_STRING MSG_SWITCHING_PM
+        EnterProtectedMode32 gdt_meta_global, pmode_entry
 
 [bits 32]
-start_protected_mode:
-        mov     ax, DATA_SEG
-        mov     ds, ax
-        mov     es, ax
-        mov     fs, ax
-        mov     gs, ax
-        mov     ss, ax
-        mov     esp, STAGE2_STACK_TOP_OFF
+pmode_entry:
+        mov     esp, STAGE2_STACK_TOP_MEM
 
-        mov     al, 'A'
-        mov     ah, 0x0f
-        mov     [VGA_TEXT_MEM - STAGE2_BASE], ax    ; DS base is STAGE2_BASE
+        mov     esi, STAGE2_KERNEL_BUF_MEM
+        mov     edi, KERNEL_MEM
+        mov     ecx, [kernel_file_size]
+        test    ecx, ecx
+        jz      .copy_done
+        cld
+        rep     movsb
+.copy_done:
+        jmp     KERNEL_MEM
 
-        jmp $
+[bits 16]
 
 halt:
         PRINT_STRING MSG_HLT
@@ -108,34 +106,6 @@ halt:
 
 ; Data
 ; ------------------------------------------------------------------------------
-gdt:
-.null_descriptor:
-                        dd 0
-                        dd 0
-.code_descriptor:
-                        dw 0xffff
-                        dw STAGE2_BASE_LOW
-                        db STAGE2_BASE_MID
-                        db 10011010b
-                        db 11001111b
-                        db STAGE2_BASE_HIGH
-.data_descriptor:
-                        dw 0xffff
-                        dw STAGE2_BASE_LOW
-                        db STAGE2_BASE_MID
-                        db 10010010b
-                        db 11001111b
-                        db STAGE2_BASE_HIGH
-.end:
-
-gdt_descriptor:
-                        dw gdt.end - gdt - 1
-                        dd gdt + STAGE2_MEM
-
-CODE_SEG                equ gdt.code_descriptor - gdt
-DATA_SEG                equ gdt.data_descriptor - gdt
-
-
 KERNEL_FILENAME:        db 'KERNEL  BIN'      ; 11 bytes
 
 kernel_first_cluster:   dw 0
@@ -145,6 +115,7 @@ MSG_E820:               db "[STAGE 2] Detecting available memory... ", 0
 MSG_INIT_VOLUME:        db "[STAGE 2] Initialising volume layout... ", 0
 MSG_FIND_KERNEL:        db "[STAGE 2] Searching for KERNEL.BIN... ", 0
 MSG_KERNEL_BUF_LDNG:    db "[STAGE 2] Loading kernel into buffer... ", 0
+MSG_COPYING_GDT:        db "[STAGE 2] Copying GDT to global location...", 0
 MSG_SWITCHING_PM:       db "[STAGE 2] Switching to protected mode...", 0
 
 MSG_SUCCESS:            db "Success!", 13, 10, 0

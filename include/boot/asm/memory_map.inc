@@ -81,6 +81,9 @@
     SEG_MEM_LOC DAP, 0x0000, 0x0900
     REGION DAP_RGN, DAP_MEM, 0x0100
 
+    SEG_MEM_LOC GDT, 0x0000, 0x1000
+    REGION GDT_RGN, GDT_MEM, 0x1000
+
     ; Reusable low RAM band
     ; --------------------------------------------------------------------------
     SEG_MEM_LOC RM_SCRATCH, 0x0000, 0x5000
