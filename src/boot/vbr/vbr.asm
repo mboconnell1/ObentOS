@@ -11,10 +11,10 @@ incbin "bpb.bin"
 
 ; Includes
 ; ------------------------------------------------------------------------------
-%include "boot_layout.inc"
-%include "defs.inc"
-%include "print_string.asm"
-%include "read_disk.asm"
+%include "common/boot_layout.inc"
+%include "common/defs.inc"
+%include "bios/print_string.asm"
+%include "bios/read_disk.asm"
 
 ; Code
 ; ------------------------------------------------------------------------------

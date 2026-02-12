@@ -1,7 +1,7 @@
 %ifndef __E820_ASM
     %define __E820_ASM
 
-%include "defs.inc"
+%include "common/defs.inc"
 
 DetectMemoryE820:
         ; Initialise counters and flags

@@ -3,7 +3,7 @@
 %ifndef __GDT_ASM
 %define __GDT_ASM
 
-%include "memory_map.inc"
+%include "common/memory_map.inc"
 
 gdt:
 .null_descriptor:       times 8 db 0

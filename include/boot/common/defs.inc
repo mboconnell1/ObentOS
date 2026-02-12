@@ -1,7 +1,7 @@
 %ifndef __DEFS__INC
     %define __DEFS__INC
 
-    %include "memory_map.inc"
+    %include "common/memory_map.inc"
 
     ; Definitions
     ; --------------------------------------------------------------------------

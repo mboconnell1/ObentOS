@@ -4,5 +4,4 @@
 *.bak
 /bin
 /docs
-/rootfs
 boot_layout.inc

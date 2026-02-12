@@ -5,12 +5,12 @@
 
 ; Includes
 ; ------------------------------------------------------------------------------
-%include "defs.inc"
-%include "a20.asm"
-%include "fat12.asm"
-%include "print_string.asm"
-%include "read_disk.asm"
-%include "volume.asm"
+%include "common/defs.inc"
+%include "hw/a20.asm"
+%include "fs/fat12.asm"
+%include "bios/print_string.asm"
+%include "bios/read_disk.asm"
+%include "fs/volume.asm"
 
 ; Code
 ; ------------------------------------------------------------------------------

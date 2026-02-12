@@ -1,17 +1,17 @@
 [bits 16]
-%include "defs.inc"
+%include "common/defs.inc"
 [org STAGE2_MEM]
 
         jmp _start
 
 ; Includes
 ; ------------------------------------------------------------------------------
-%include "e820.asm"
-%include "fat12.asm"
-%include "print_string.asm"
-%include "read_disk.asm"
-%include "volume.asm"
-%include "gdt.asm"
+%include "bios/e820.asm"
+%include "fs/fat12.asm"
+%include "bios/print_string.asm"
+%include "bios/read_disk.asm"
+%include "fs/volume.asm"
+%include "hw/gdt.asm"
 
 %define VGA_TEXT_MEM       0xB8000
 
@@ -115,7 +115,7 @@ MSG_E820:               db "[STAGE 2] Detecting available memory... ", 0
 MSG_INIT_VOLUME:        db "[STAGE 2] Initialising volume layout... ", 0
 MSG_FIND_KERNEL:        db "[STAGE 2] Searching for KERNEL.BIN... ", 0
 MSG_KERNEL_BUF_LDNG:    db "[STAGE 2] Loading kernel into buffer... ", 0
-MSG_COPYING_GDT:        db "[STAGE 2] Copying GDT to global location...", 0
+MSG_COPYING_GDT:        db "[STAGE 2] Copying GDT to global location... ", 0
 MSG_SWITCHING_PM:       db "[STAGE 2] Switching to protected mode...", 0
 
 MSG_SUCCESS:            db "Success!", 13, 10, 0
