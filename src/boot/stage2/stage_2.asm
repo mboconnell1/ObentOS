@@ -12,6 +12,7 @@
 %include "bios/read_disk.asm"
 %include "fs/volume.asm"
 %include "hw/gdt.asm"
+%include "../kernel/header.inc"
 
 %define VGA_TEXT_MEM       0xB8000
 
@@ -96,7 +97,18 @@ pmode_entry:
         cld
         rep     movsb
 .copy_done:
-        jmp     KERNEL_MEM
+        mov     esi, KERNEL_MEM
+        cmp     dword [esi + kernel_header_t.Magic], KERNEL_HEADER_MAGIC
+        jne     invalid_kernel
+        mov     eax, [esi + kernel_header_t.Entry]
+        test    eax, eax
+        jz      invalid_kernel
+        jmp     eax
+
+invalid_kernel:
+        cli
+        hlt
+        jmp     invalid_kernel
 
 [bits 16]
 
