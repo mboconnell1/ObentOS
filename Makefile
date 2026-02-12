@@ -1,4 +1,4 @@
-OS_NAME        := ObentOS
+OS_NAME        := obentos
 
 # ----------------------------------------------------------------------
 # Build configuration
@@ -143,10 +143,10 @@ clean:
 	rm -f $(BOOT_LAYOUT_INC)
 
 run: $(DISK_IMG)
-	qemu-system-x86_64 -hda $(DISK_IMG)
+	qemu-system-x86_64 -drive file=$(DISK_IMG),format=raw,index=0,media=disk
 
 run-debug: $(DISK_IMG)
-	qemu-system-x86_64 -hda $(DISK_IMG) -s -S -serial stdio
+	qemu-system-x86_64 -drive file=$(DISK_IMG),format=raw,index=0,media=disk -s -S -serial stdio
 
 gdb: $(KERNEL_ELF)
 	$(GDB) $(GDBFLAGS) $(KERNEL_ELF)
