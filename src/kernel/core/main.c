@@ -2,7 +2,8 @@
 #include <kernel/console.h>
 
 void kmain(void) {
-    fb_write_cell(0, 'A', VGA_GREEN, VGA_DARK_GREY);
+    vga_clear();
+    vga_write_string(0, (char*)"ObentOS", VGA_WHITE, VGA_BLACK);
     for (;;)
         __asm__ volatile ("hlt");
 }
